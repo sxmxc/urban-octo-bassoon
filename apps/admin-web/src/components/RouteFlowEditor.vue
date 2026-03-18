@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Teleport, computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { Background } from "@vue-flow/background";
 import { ControlButton, Controls } from "@vue-flow/controls";
 import { MiniMap } from "@vue-flow/minimap";
@@ -868,7 +868,11 @@ function parseFlexibleValue(rawValue: string, label: string): { value: JsonValue
     return { value: null, error: null };
   }
 
-  const looksLikeJson = /^[\[{"]/.test(trimmed) || /^(true|false|null|-?\d+(\.\d+)?)$/i.test(trimmed);
+  const looksLikeJson =
+    trimmed.startsWith("{") ||
+    trimmed.startsWith("[") ||
+    trimmed.startsWith("\"") ||
+    /^(true|false|null|-?\d+(\.\d+)?)$/i.test(trimmed);
   if (looksLikeJson) {
     try {
       return { value: JSON.parse(trimmed) as JsonValue, error: null };
@@ -1459,84 +1463,84 @@ onBeforeUnmount(() => {
       }"
     >
       <v-sheet v-if="!isFocusMode" class="route-flow-editor__toolbar pa-4" rounded="xl">
-      <div class="route-flow-editor__toolbar-head">
-        <div class="route-flow-editor__toolbar-copy">
-          <div class="route-flow-editor__panel-eyebrow">
-            {{ isFocusMode ? "Command palette" : "Flow designer" }}
+        <div class="route-flow-editor__toolbar-head">
+          <div class="route-flow-editor__toolbar-copy">
+            <div class="route-flow-editor__panel-eyebrow">
+              {{ isFocusMode ? "Command palette" : "Flow designer" }}
+            </div>
+            <div class="route-flow-editor__toolbar-title">
+              {{ isFocusMode ? "Add nodes and shape the route graph." : "Design the live API data flow as a node graph." }}
+            </div>
+            <div v-if="!isFocusMode" class="text-body-2 text-medium-emphasis">
+              Keep the single <strong>API Trigger</strong> fixed, then route request data through logic, transforms,
+              connectors, and response nodes. Contract design still lives in the separate <strong>Contract</strong> journey.
+            </div>
           </div>
-          <div class="route-flow-editor__toolbar-title">
-            {{ isFocusMode ? "Add nodes and shape the route graph." : "Design the live API data flow as a node graph." }}
-          </div>
-          <div v-if="!isFocusMode" class="text-body-2 text-medium-emphasis">
-            Keep the single <strong>API Trigger</strong> fixed, then route request data through logic, transforms,
-            connectors, and response nodes. Contract design still lives in the separate <strong>Contract</strong> journey.
+
+          <div class="route-flow-editor__toolbar-status">
+            <v-chip :color="flowHealthColor" label size="small" variant="tonal">
+              {{ flowHealthLabel }}
+            </v-chip>
+            <v-chip color="primary" label size="small" variant="tonal">
+              {{ nodeCount }} nodes
+            </v-chip>
+            <v-chip color="secondary" label size="small" variant="tonal">
+              {{ edgeCount }} links
+            </v-chip>
+            <v-chip
+              v-if="savedConnectionCount > 0"
+              color="accent"
+              label
+              size="small"
+              variant="tonal"
+            >
+              {{ savedConnectionCount }} saved connections
+            </v-chip>
+            <v-btn
+              class="route-flow-editor__toolbar-action"
+              prepend-icon="mdi-sitemap-outline"
+              size="small"
+              variant="outlined"
+              @click="autoArrangeCanvas"
+            >
+              Auto arrange
+            </v-btn>
+            <v-btn
+              class="route-flow-editor__toolbar-action"
+              :prepend-icon="isFocusMode ? 'mdi-arrow-collapse-all' : 'mdi-arrow-expand-all'"
+              color="primary"
+              size="small"
+              variant="tonal"
+              @click="toggleFocusMode"
+            >
+              {{ isFocusMode ? "Exit full editor" : "Open full editor" }}
+            </v-btn>
           </div>
         </div>
 
-        <div class="route-flow-editor__toolbar-status">
-          <v-chip :color="flowHealthColor" label size="small" variant="tonal">
-            {{ flowHealthLabel }}
-          </v-chip>
-          <v-chip color="primary" label size="small" variant="tonal">
-            {{ nodeCount }} nodes
-          </v-chip>
-          <v-chip color="secondary" label size="small" variant="tonal">
-            {{ edgeCount }} links
-          </v-chip>
-          <v-chip
-            v-if="savedConnectionCount > 0"
-            color="accent"
-            label
-            size="small"
-            variant="tonal"
-          >
-            {{ savedConnectionCount }} saved connections
-          </v-chip>
+        <div class="route-flow-editor__toolbelt">
           <v-btn
-            class="route-flow-editor__toolbar-action"
-            prepend-icon="mdi-sitemap-outline"
-            size="small"
-            variant="outlined"
-            @click="autoArrangeCanvas"
-          >
-            Auto arrange
-          </v-btn>
-          <v-btn
-            class="route-flow-editor__toolbar-action"
-            :prepend-icon="isFocusMode ? 'mdi-arrow-collapse-all' : 'mdi-arrow-expand-all'"
-            color="primary"
-            size="small"
+            v-for="preset in ROUTE_FLOW_NODE_PRESETS"
+            :key="preset.type"
+            class="route-flow-editor__tool-btn"
+            :color="preset.color"
+            :disabled="!canUsePreset(preset.type)"
+            :prepend-icon="preset.icon"
+            :draggable="canUsePreset(preset.type)"
             variant="tonal"
-            @click="toggleFocusMode"
+            @dragstart="handlePaletteDragStart($event, preset.type)"
+            @click="addNode(preset.type)"
           >
-            {{ isFocusMode ? "Exit full editor" : "Open full editor" }}
+            {{ preset.title }}
           </v-btn>
         </div>
-      </div>
 
-      <div class="route-flow-editor__toolbelt">
-        <v-btn
-          v-for="preset in ROUTE_FLOW_NODE_PRESETS"
-          :key="preset.type"
-          class="route-flow-editor__tool-btn"
-          :color="preset.color"
-          :disabled="!canUsePreset(preset.type)"
-          :prepend-icon="preset.icon"
-          :draggable="canUsePreset(preset.type)"
-          variant="tonal"
-          @dragstart="handlePaletteDragStart($event, preset.type)"
-          @click="addNode(preset.type)"
-        >
-          {{ preset.title }}
-        </v-btn>
-      </div>
-
-      <div v-if="!isFocusMode" class="route-flow-editor__toolbar-note">
-        Drag nodes from the palette onto the canvas, or click a palette node while another node is selected to append or
-        connect it. Use the labeled branch ports on <strong>If</strong> and <strong>Switch</strong> to draw True, False,
-        Case, and Default paths directly on the graph.
-      </div>
-    </v-sheet>
+        <div v-if="!isFocusMode" class="route-flow-editor__toolbar-note">
+          Drag nodes from the palette onto the canvas, or click a palette node while another node is selected to append or
+          connect it. Use the labeled branch ports on <strong>If</strong> and <strong>Switch</strong> to draw True, False,
+          Case, and Default paths directly on the graph.
+        </div>
+      </v-sheet>
 
       <div
         class="route-flow-editor__canvas-shell"
@@ -1561,7 +1565,7 @@ onBeforeUnmount(() => {
           @node-drag-stop="handleNodeDragStop"
           @pane-click="clearSelection"
         >
-        <Background :gap="22" pattern-color="rgba(125, 137, 160, 0.18)" />
+          <Background :gap="22" pattern-color="rgba(125, 137, 160, 0.18)" />
           <Panel
             v-if="isFocusMode"
             class="route-flow-editor__focus-floater route-flow-editor__focus-floater--palette"
@@ -1832,18 +1836,18 @@ onBeforeUnmount(() => {
             :show-fit-view="false"
             :show-interactive="false"
           >
-          <ControlButton title="Fit flow to view" @click="fitCanvas">
-            <v-icon icon="mdi-image-filter-center-focus" size="18" />
-          </ControlButton>
-          <ControlButton title="Auto arrange nodes" @click="autoArrangeCanvas">
-            <v-icon icon="mdi-sitemap-outline" size="18" />
-          </ControlButton>
-          <ControlButton
-            :title="isFocusMode ? 'Exit full editor' : 'Open full editor'"
-            @click="toggleFocusMode"
-          >
-            <v-icon :icon="isFocusMode ? 'mdi-arrow-collapse-all' : 'mdi-arrow-expand-all'" size="18" />
-          </ControlButton>
+            <ControlButton title="Fit flow to view" @click="fitCanvas">
+              <v-icon icon="mdi-image-filter-center-focus" size="18" />
+            </ControlButton>
+            <ControlButton title="Auto arrange nodes" @click="autoArrangeCanvas">
+              <v-icon icon="mdi-sitemap-outline" size="18" />
+            </ControlButton>
+            <ControlButton
+              :title="isFocusMode ? 'Exit full editor' : 'Open full editor'"
+              @click="toggleFocusMode"
+            >
+              <v-icon :icon="isFocusMode ? 'mdi-arrow-collapse-all' : 'mdi-arrow-expand-all'" size="18" />
+            </ControlButton>
           </Controls>
           <MiniMap
             v-if="isFocusMode"
@@ -1883,545 +1887,545 @@ onBeforeUnmount(() => {
       >
         <v-col class="route-flow-editor__inspector-column" cols="12" :xl="isFocusMode ? 12 : 8">
           <v-sheet class="route-flow-editor__detail-panel pa-4" rounded="xl">
-          <div class="route-flow-editor__detail-head">
-            <div>
-              <div class="route-flow-editor__panel-eyebrow">Selected node</div>
-              <div class="route-flow-editor__detail-title">
-                {{ selectedCanvasNode ? selectedCanvasNode.label : "Choose a node to edit" }}
+            <div class="route-flow-editor__detail-head">
+              <div>
+                <div class="route-flow-editor__panel-eyebrow">Selected node</div>
+                <div class="route-flow-editor__detail-title">
+                  {{ selectedCanvasNode ? selectedCanvasNode.label : "Choose a node to edit" }}
+                </div>
+                <div class="text-body-2 text-medium-emphasis">
+                  {{
+                    selectedCanvasNode
+                      ? isFocusMode
+                        ? "Quick node settings stay docked here."
+                        : "Canvas nodes stay stable while the inspector holds the editing detail."
+                      : "Nodes stay compact on the canvas; editing opens here once you pick the path you want to tune."
+                  }}
+                </div>
               </div>
-              <div class="text-body-2 text-medium-emphasis">
-                {{
-                  selectedCanvasNode
-                    ? isFocusMode
-                      ? "Quick node settings stay docked here."
-                      : "Canvas nodes stay stable while the inspector holds the editing detail."
-                    : "Nodes stay compact on the canvas; editing opens here once you pick the path you want to tune."
-                }}
+
+              <div class="d-flex flex-wrap justify-end ga-2">
+                <v-btn
+                  v-if="selectedCanvasNode"
+                  prepend-icon="mdi-close"
+                  variant="text"
+                  @click="closeInspector"
+                >
+                  Close
+                </v-btn>
+                <v-btn
+                  v-if="selectedCanvasNode"
+                  color="error"
+                  prepend-icon="mdi-trash-can-outline"
+                  variant="text"
+                  @click="removeSelectedNode"
+                >
+                  Remove
+                </v-btn>
               </div>
             </div>
 
-            <div class="d-flex flex-wrap justify-end ga-2">
-              <v-btn
-                v-if="selectedCanvasNode"
-                prepend-icon="mdi-close"
-                variant="text"
-                @click="closeInspector"
-              >
-                Close
-              </v-btn>
-              <v-btn
-                v-if="selectedCanvasNode"
-                color="error"
-                prepend-icon="mdi-trash-can-outline"
-                variant="text"
-                @click="removeSelectedNode"
-              >
-                Remove
-              </v-btn>
+            <div v-if="selectedCanvasNode" class="d-flex flex-column ga-4 mt-4">
+              <v-row class="route-flow-editor__editor-grid">
+                <v-col cols="12" md="5">
+                  <v-sheet class="route-flow-editor__subpanel pa-4" rounded="xl">
+                    <div class="route-flow-editor__panel-eyebrow">Node basics</div>
+
+                    <div class="d-flex flex-wrap ga-2 mt-3">
+                      <v-chip :color="selectedFlowNodePreset?.color" label size="small" variant="tonal">
+                        {{ selectedFlowNodePreset?.title }}
+                      </v-chip>
+                      <v-chip label size="small" variant="outlined">
+                        {{ selectedNodeConnectionSummary.incoming }} in / {{ selectedNodeConnectionSummary.outgoing }} out
+                      </v-chip>
+                    </div>
+
+                    <v-text-field
+                      class="mt-4"
+                      label="Node name"
+                      :model-value="selectedCanvasNode.label"
+                      @update:model-value="updateSelectedNodeName(String($event ?? ''))"
+                    />
+                    <v-text-field
+                      label="Node id"
+                      :model-value="selectedCanvasNode.id"
+                      readonly
+                    />
+
+                    <div class="text-body-2 text-medium-emphasis mt-2">
+                      {{ selectedFlowNodePreset?.description }}
+                    </div>
+                  </v-sheet>
+                </v-col>
+
+                <v-col cols="12" md="7">
+                  <v-sheet class="route-flow-editor__subpanel pa-4" rounded="xl">
+                    <div class="route-flow-editor__panel-eyebrow">Runtime behavior</div>
+
+                    <template v-if="selectedCanvasNode.data.runtimeType === 'api_trigger'">
+                      <v-alert class="mt-3" border="start" color="info" variant="tonal">
+                        API Trigger is the only entrypoint in this designer. It always starts with the saved route method, path,
+                        and request payload metadata.
+                      </v-alert>
+                    </template>
+
+                    <template v-else-if="selectedCanvasNode.data.runtimeType === 'validate_request'">
+                      <v-alert class="mt-3" border="start" color="info" variant="tonal">
+                        Validate Request currently always enforces the saved contract. The future connector/runtime work can make
+                        this richer, but today the backend still treats Contract as the source of truth.
+                      </v-alert>
+                      <v-text-field
+                        class="mt-4"
+                        label="Body mode"
+                        :model-value="String(selectedCanvasNode.data.config.body_mode ?? 'contract')"
+                        readonly
+                      />
+                      <v-text-field
+                        label="Parameters mode"
+                        :model-value="String(selectedCanvasNode.data.config.parameters_mode ?? 'contract')"
+                        readonly
+                      />
+                    </template>
+
+                    <template v-else-if="selectedCanvasNode.data.runtimeType === 'transform'">
+                      <div class="route-flow-editor__snippet-row mt-3">
+                        <span class="text-caption text-medium-emphasis">Quick refs</span>
+                        <div class="d-flex flex-wrap ga-2">
+                          <v-chip
+                            v-for="snippet in transformReferenceSnippets"
+                            :key="snippet.value"
+                            label
+                            size="small"
+                            variant="outlined"
+                            @click="applyReferenceSnippet('transform', snippet.value)"
+                          >
+                            {{ snippet.label }}
+                          </v-chip>
+                        </div>
+                      </div>
+
+                      <v-textarea
+                        class="mt-3"
+                        auto-grow
+                        hint="Use JSON plus refs like {&quot;$ref&quot;:&quot;request.body&quot;} or {&quot;$ref&quot;:&quot;state.transform&quot;}."
+                        label="Output template JSON"
+                        persistent-hint
+                        rows="11"
+                        spellcheck="false"
+                        :error-messages="transformOutputError ? [transformOutputError] : []"
+                        :model-value="transformOutputText"
+                        @update:model-value="handleTransformOutputInput(String($event ?? ''))"
+                      />
+                    </template>
+
+                    <template v-else-if="selectedCanvasNode.data.runtimeType === 'if_condition'">
+                      <v-alert class="mt-3" border="start" color="info" variant="tonal">
+                        If evaluates the current route data and sends execution down a <code>True</code> or <code>False</code>
+                        path. Use refs to compare request values or earlier node output.
+                      </v-alert>
+
+                      <div class="route-flow-editor__snippet-row mt-3">
+                        <span class="text-caption text-medium-emphasis">Quick refs</span>
+                        <div class="d-flex flex-wrap ga-2">
+                          <v-chip
+                            v-for="snippet in transformReferenceSnippets"
+                            :key="snippet.value"
+                            label
+                            size="small"
+                            variant="outlined"
+                            @click="applyReferenceSnippet('ifLeft', snippet.value)"
+                          >
+                            {{ snippet.label }}
+                          </v-chip>
+                        </div>
+                      </div>
+
+                      <v-textarea
+                        class="mt-3"
+                        auto-grow
+                        hint="Use a ref like {&quot;$ref&quot;:&quot;request.query.mode&quot;} or a plain string value."
+                        label="Left value"
+                        persistent-hint
+                        rows="3"
+                        spellcheck="false"
+                        :error-messages="ifLeftError ? [ifLeftError] : []"
+                        :model-value="ifLeftText"
+                        @update:model-value="handleIfLeftInput(String($event ?? ''))"
+                      />
+                      <v-select
+                        v-model="selectedNodeIfOperator"
+                        :items="IF_OPERATOR_OPTIONS"
+                        item-title="title"
+                        item-value="value"
+                        label="Operator"
+                      />
+                      <v-textarea
+                        v-if="requiresIfRightValue"
+                        auto-grow
+                        hint="Use a ref like {&quot;$ref&quot;:&quot;state.http-request-1.response.status_code&quot;} or a plain value."
+                        label="Right value"
+                        persistent-hint
+                        rows="3"
+                        spellcheck="false"
+                        :error-messages="ifRightError ? [ifRightError] : []"
+                        :model-value="ifRightText"
+                        @update:model-value="handleIfRightInput(String($event ?? ''))"
+                      />
+
+                      <div class="route-flow-editor__snippet-row mt-3">
+                        <span class="text-caption text-medium-emphasis">Branch paths</span>
+                        <div class="text-caption text-medium-emphasis mt-2">
+                          Drag from the <strong>True</strong> and <strong>False</strong> ports on the node, or keep this node
+                          selected and click or drop another palette node to create the next step.
+                        </div>
+                        <div class="d-flex flex-column ga-3 mt-2">
+                          <div
+                            v-for="connection in selectedNodeOutgoingConnections"
+                            :key="connection.id"
+                            class="route-flow-editor__branch-row"
+                          >
+                            <div class="text-body-2 font-weight-medium">{{ connection.targetLabel }}</div>
+                            <v-select
+                              :items="IF_BRANCH_OPTIONS"
+                              item-title="title"
+                              item-value="value"
+                              label="Branch"
+                              :model-value="connection.branch"
+                              @update:model-value="updateIfBranchForEdge(connection.id, String($event ?? ''))"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+
+                    <template v-else-if="selectedCanvasNode.data.runtimeType === 'switch'">
+                      <v-alert class="mt-3" border="start" color="info" variant="tonal">
+                        Switch picks a case based on the current route data. Give it one or more <code>Case</code> paths and
+                        exactly one <code>Default</code> path.
+                      </v-alert>
+
+                      <div class="route-flow-editor__snippet-row mt-3">
+                        <span class="text-caption text-medium-emphasis">Quick refs</span>
+                        <div class="d-flex flex-wrap ga-2">
+                          <v-chip
+                            v-for="snippet in transformReferenceSnippets"
+                            :key="snippet.value"
+                            label
+                            size="small"
+                            variant="outlined"
+                            @click="applyReferenceSnippet('switchValue', snippet.value)"
+                          >
+                            {{ snippet.label }}
+                          </v-chip>
+                        </div>
+                      </div>
+
+                      <v-textarea
+                        class="mt-3"
+                        auto-grow
+                        hint="Use a ref like {&quot;$ref&quot;:&quot;request.query.mode&quot;} or a plain string value."
+                        label="Switch value"
+                        persistent-hint
+                        rows="3"
+                        spellcheck="false"
+                        :error-messages="switchValueError ? [switchValueError] : []"
+                        :model-value="switchValueText"
+                        @update:model-value="handleSwitchValueInput(String($event ?? ''))"
+                      />
+
+                      <div class="route-flow-editor__snippet-row mt-3">
+                        <span class="text-caption text-medium-emphasis">Branch paths</span>
+                        <div class="text-caption text-medium-emphasis mt-2">
+                          Drag from the <strong>Case</strong> or <strong>Default</strong> ports on the node. Keep Switch
+                          selected and add another node from the palette whenever you want another case path.
+                        </div>
+                        <div class="d-flex flex-column ga-3 mt-2">
+                          <div
+                            v-for="connection in selectedNodeOutgoingConnections"
+                            :key="connection.id"
+                            class="route-flow-editor__branch-row"
+                          >
+                            <div class="text-body-2 font-weight-medium">{{ connection.targetLabel }}</div>
+                            <v-select
+                              :items="SWITCH_BRANCH_OPTIONS"
+                              item-title="title"
+                              item-value="value"
+                              label="Path type"
+                              :model-value="connection.branch"
+                              @update:model-value="updateSwitchBranchMode(connection.id, String($event ?? ''))"
+                            />
+                            <v-text-field
+                              v-if="connection.branch === 'case'"
+                              label="Case value"
+                              :model-value="stringifyFlexibleValue(connection.caseValue)"
+                              @update:model-value="updateSwitchCaseValue(connection.id, String($event ?? ''))"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+
+                    <template v-else-if="selectedCanvasNode.data.runtimeType === 'http_request'">
+                      <v-alert class="mt-3" border="start" color="info" variant="tonal">
+                        HTTP Request calls an upstream URL through a saved shared connection. Path fields support inline tokens
+                        like <code v-pre>{{request.path.deviceId}}</code>.
+                      </v-alert>
+
+                      <v-select
+                        v-model="selectedNodeConnectionId"
+                        class="mt-4"
+                        :items="httpConnectionOptions"
+                        clearable
+                        label="HTTP connection"
+                      />
+                      <v-select
+                        v-model="selectedNodeHttpMethod"
+                        :items="HTTP_METHOD_OPTIONS"
+                        label="Method"
+                      />
+                      <v-text-field
+                        hint="Use a relative path such as /devices/{{request.path.deviceId}} or a full absolute URL."
+                        label="Path or URL template"
+                        persistent-hint
+                        :model-value="httpPathText"
+                        @update:model-value="handleHttpPathInput(String($event ?? ''))"
+                      />
+                      <v-text-field
+                        v-model="selectedNodeTimeoutMs"
+                        label="Timeout (ms)"
+                      />
+                      <v-textarea
+                        class="mt-2"
+                        auto-grow
+                        hint="Optional JSON object of query params, for example {&quot;include&quot;:{&quot;$ref&quot;:&quot;request.query.include&quot;}}."
+                        label="Query params JSON"
+                        persistent-hint
+                        rows="5"
+                        spellcheck="false"
+                        :error-messages="httpQueryError ? [httpQueryError] : []"
+                        :model-value="httpQueryText"
+                        @update:model-value="handleHttpQueryInput(String($event ?? ''))"
+                      />
+                      <v-textarea
+                        auto-grow
+                        hint="Optional JSON object of headers. Connection-level headers still apply automatically."
+                        label="Request headers JSON"
+                        persistent-hint
+                        rows="5"
+                        spellcheck="false"
+                        :error-messages="httpHeadersError ? [httpHeadersError] : []"
+                        :model-value="httpHeadersText"
+                        @update:model-value="handleHttpHeadersInput(String($event ?? ''))"
+                      />
+                      <v-textarea
+                        auto-grow
+                        hint="Optional JSON body sent to the upstream request."
+                        label="Request body JSON"
+                        persistent-hint
+                        rows="6"
+                        spellcheck="false"
+                        :error-messages="httpBodyError ? [httpBodyError] : []"
+                        :model-value="httpBodyText"
+                        @update:model-value="handleHttpBodyInput(String($event ?? ''))"
+                      />
+                    </template>
+
+                    <template v-else-if="selectedCanvasNode.data.runtimeType === 'postgres_query'">
+                      <v-alert class="mt-3" border="start" color="info" variant="tonal">
+                        Postgres Query is limited to a single read-only <code>SELECT</code> or <code>WITH</code> statement and
+                        uses named parameters instead of raw string interpolation.
+                      </v-alert>
+
+                      <v-select
+                        v-model="selectedNodeConnectionId"
+                        class="mt-4"
+                        :items="postgresConnectionOptions"
+                        clearable
+                        label="Postgres connection"
+                      />
+                      <v-textarea
+                        auto-grow
+                        hint="Use placeholders like %(order_id)s in one read-only statement."
+                        label="SQL"
+                        persistent-hint
+                        rows="7"
+                        spellcheck="false"
+                        :model-value="postgresSqlText"
+                        @update:model-value="handlePostgresSqlInput(String($event ?? ''))"
+                      />
+                      <v-textarea
+                        auto-grow
+                        hint="Map placeholders to refs, for example {&quot;order_id&quot;:{&quot;$ref&quot;:&quot;request.path.orderId&quot;}}."
+                        label="Parameters JSON"
+                        persistent-hint
+                        rows="6"
+                        spellcheck="false"
+                        :error-messages="postgresParametersError ? [postgresParametersError] : []"
+                        :model-value="postgresParametersText"
+                        @update:model-value="handlePostgresParametersInput(String($event ?? ''))"
+                      />
+                    </template>
+
+                    <template v-else-if="selectedCanvasNode.data.runtimeType === 'set_response'">
+                      <v-text-field v-model="selectedNodeStatusCode" class="mt-3" label="Status code" />
+
+                      <div class="route-flow-editor__snippet-row">
+                        <span class="text-caption text-medium-emphasis">Quick refs</span>
+                        <div class="d-flex flex-wrap ga-2">
+                          <v-chip
+                            v-for="snippet in responseReferenceSnippets"
+                            :key="snippet.value"
+                            label
+                            size="small"
+                            variant="outlined"
+                            @click="applyReferenceSnippet('response', snippet.value)"
+                          >
+                            {{ snippet.label }}
+                          </v-chip>
+                        </div>
+                      </div>
+
+                      <v-textarea
+                        class="mt-3"
+                        auto-grow
+                        hint="Response bodies can be fixed JSON or ref-driven JSON such as {&quot;$ref&quot;:&quot;state.transform&quot;}."
+                        label="Response body JSON"
+                        persistent-hint
+                        rows="11"
+                        spellcheck="false"
+                        :error-messages="responseBodyError ? [responseBodyError] : []"
+                        :model-value="responseBodyText"
+                        @update:model-value="handleResponseBodyInput(String($event ?? ''))"
+                      />
+                    </template>
+
+                    <template v-else-if="selectedCanvasNode.data.runtimeType === 'error_response'">
+                      <v-text-field v-model="selectedNodeStatusCode" class="mt-3" label="Error response status" />
+
+                      <div class="route-flow-editor__snippet-row">
+                        <span class="text-caption text-medium-emphasis">Quick refs</span>
+                        <div class="d-flex flex-wrap ga-2">
+                          <v-chip
+                            v-for="snippet in ERROR_REFERENCE_SNIPPETS"
+                            :key="snippet.value"
+                            label
+                            size="small"
+                            variant="outlined"
+                            @click="applyReferenceSnippet('error', snippet.value)"
+                          >
+                            {{ snippet.label }}
+                          </v-chip>
+                        </div>
+                      </div>
+
+                      <v-textarea
+                        class="mt-3"
+                        auto-grow
+                        hint="Returned when Validate Request fails, or when any other flow path explicitly routes into Error Response."
+                        label="Error response body JSON"
+                        persistent-hint
+                        rows="11"
+                        spellcheck="false"
+                        :error-messages="errorBodyError ? [errorBodyError] : []"
+                        :model-value="errorBodyText"
+                        @update:model-value="handleErrorBodyInput(String($event ?? ''))"
+                      />
+                    </template>
+                  </v-sheet>
+                </v-col>
+              </v-row>
             </div>
-          </div>
 
-          <div v-if="selectedCanvasNode" class="d-flex flex-column ga-4 mt-4">
-            <v-row class="route-flow-editor__editor-grid">
-              <v-col cols="12" md="5">
-                <v-sheet class="route-flow-editor__subpanel pa-4" rounded="xl">
-                  <div class="route-flow-editor__panel-eyebrow">Node basics</div>
-
-                  <div class="d-flex flex-wrap ga-2 mt-3">
-                    <v-chip :color="selectedFlowNodePreset?.color" label size="small" variant="tonal">
-                      {{ selectedFlowNodePreset?.title }}
-                    </v-chip>
-                    <v-chip label size="small" variant="outlined">
-                      {{ selectedNodeConnectionSummary.incoming }} in / {{ selectedNodeConnectionSummary.outgoing }} out
-                    </v-chip>
-                  </div>
-
-                  <v-text-field
-                    class="mt-4"
-                    label="Node name"
-                    :model-value="selectedCanvasNode.label"
-                    @update:model-value="updateSelectedNodeName(String($event ?? ''))"
-                  />
-                  <v-text-field
-                    label="Node id"
-                    :model-value="selectedCanvasNode.id"
-                    readonly
-                  />
-
-                  <div class="text-body-2 text-medium-emphasis mt-2">
-                    {{ selectedFlowNodePreset?.description }}
-                  </div>
-                </v-sheet>
-              </v-col>
-
-              <v-col cols="12" md="7">
-                <v-sheet class="route-flow-editor__subpanel pa-4" rounded="xl">
-                  <div class="route-flow-editor__panel-eyebrow">Runtime behavior</div>
-
-                  <template v-if="selectedCanvasNode.data.runtimeType === 'api_trigger'">
-                    <v-alert class="mt-3" border="start" color="info" variant="tonal">
-                      API Trigger is the only entrypoint in this designer. It always starts with the saved route method, path,
-                      and request payload metadata.
-                    </v-alert>
-                  </template>
-
-                  <template v-else-if="selectedCanvasNode.data.runtimeType === 'validate_request'">
-                    <v-alert class="mt-3" border="start" color="info" variant="tonal">
-                      Validate Request currently always enforces the saved contract. The future connector/runtime work can make
-                      this richer, but today the backend still treats Contract as the source of truth.
-                    </v-alert>
-                    <v-text-field
-                      class="mt-4"
-                      label="Body mode"
-                      :model-value="String(selectedCanvasNode.data.config.body_mode ?? 'contract')"
-                      readonly
-                    />
-                    <v-text-field
-                      label="Parameters mode"
-                      :model-value="String(selectedCanvasNode.data.config.parameters_mode ?? 'contract')"
-                      readonly
-                    />
-                  </template>
-
-                  <template v-else-if="selectedCanvasNode.data.runtimeType === 'transform'">
-                    <div class="route-flow-editor__snippet-row mt-3">
-                      <span class="text-caption text-medium-emphasis">Quick refs</span>
-                      <div class="d-flex flex-wrap ga-2">
-                        <v-chip
-                          v-for="snippet in transformReferenceSnippets"
-                          :key="snippet.value"
-                          label
-                          size="small"
-                          variant="outlined"
-                          @click="applyReferenceSnippet('transform', snippet.value)"
-                        >
-                          {{ snippet.label }}
-                        </v-chip>
-                      </div>
-                    </div>
-
-                    <v-textarea
-                      class="mt-3"
-                      auto-grow
-                      hint='Use JSON plus refs like {"$ref":"request.body"} or {"$ref":"state.transform"}.'
-                      label="Output template JSON"
-                      persistent-hint
-                      rows="11"
-                      spellcheck="false"
-                      :error-messages="transformOutputError ? [transformOutputError] : []"
-                      :model-value="transformOutputText"
-                      @update:model-value="handleTransformOutputInput(String($event ?? ''))"
-                    />
-                  </template>
-
-                  <template v-else-if="selectedCanvasNode.data.runtimeType === 'if_condition'">
-                    <v-alert class="mt-3" border="start" color="info" variant="tonal">
-                      If evaluates the current route data and sends execution down a <code>True</code> or <code>False</code>
-                      path. Use refs to compare request values or earlier node output.
-                    </v-alert>
-
-                    <div class="route-flow-editor__snippet-row mt-3">
-                      <span class="text-caption text-medium-emphasis">Quick refs</span>
-                      <div class="d-flex flex-wrap ga-2">
-                        <v-chip
-                          v-for="snippet in transformReferenceSnippets"
-                          :key="snippet.value"
-                          label
-                          size="small"
-                          variant="outlined"
-                          @click="applyReferenceSnippet('ifLeft', snippet.value)"
-                        >
-                          {{ snippet.label }}
-                        </v-chip>
-                      </div>
-                    </div>
-
-                    <v-textarea
-                      class="mt-3"
-                      auto-grow
-                      hint='Use a ref like {"$ref":"request.query.mode"} or a plain string value.'
-                      label="Left value"
-                      persistent-hint
-                      rows="3"
-                      spellcheck="false"
-                      :error-messages="ifLeftError ? [ifLeftError] : []"
-                      :model-value="ifLeftText"
-                      @update:model-value="handleIfLeftInput(String($event ?? ''))"
-                    />
-                    <v-select
-                      v-model="selectedNodeIfOperator"
-                      :items="IF_OPERATOR_OPTIONS"
-                      item-title="title"
-                      item-value="value"
-                      label="Operator"
-                    />
-                    <v-textarea
-                      v-if="requiresIfRightValue"
-                      auto-grow
-                      hint='Use a ref like {"$ref":"state.http-request-1.response.status_code"} or a plain value.'
-                      label="Right value"
-                      persistent-hint
-                      rows="3"
-                      spellcheck="false"
-                      :error-messages="ifRightError ? [ifRightError] : []"
-                      :model-value="ifRightText"
-                      @update:model-value="handleIfRightInput(String($event ?? ''))"
-                    />
-
-                    <div class="route-flow-editor__snippet-row mt-3">
-                      <span class="text-caption text-medium-emphasis">Branch paths</span>
-                      <div class="text-caption text-medium-emphasis mt-2">
-                        Drag from the <strong>True</strong> and <strong>False</strong> ports on the node, or keep this node
-                        selected and click or drop another palette node to create the next step.
-                      </div>
-                      <div class="d-flex flex-column ga-3 mt-2">
-                        <div
-                          v-for="connection in selectedNodeOutgoingConnections"
-                          :key="connection.id"
-                          class="route-flow-editor__branch-row"
-                        >
-                          <div class="text-body-2 font-weight-medium">{{ connection.targetLabel }}</div>
-                          <v-select
-                            :items="IF_BRANCH_OPTIONS"
-                            item-title="title"
-                            item-value="value"
-                            label="Branch"
-                            :model-value="connection.branch"
-                            @update:model-value="updateIfBranchForEdge(connection.id, String($event ?? ''))"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </template>
-
-                  <template v-else-if="selectedCanvasNode.data.runtimeType === 'switch'">
-                    <v-alert class="mt-3" border="start" color="info" variant="tonal">
-                      Switch picks a case based on the current route data. Give it one or more <code>Case</code> paths and
-                      exactly one <code>Default</code> path.
-                    </v-alert>
-
-                    <div class="route-flow-editor__snippet-row mt-3">
-                      <span class="text-caption text-medium-emphasis">Quick refs</span>
-                      <div class="d-flex flex-wrap ga-2">
-                        <v-chip
-                          v-for="snippet in transformReferenceSnippets"
-                          :key="snippet.value"
-                          label
-                          size="small"
-                          variant="outlined"
-                          @click="applyReferenceSnippet('switchValue', snippet.value)"
-                        >
-                          {{ snippet.label }}
-                        </v-chip>
-                      </div>
-                    </div>
-
-                    <v-textarea
-                      class="mt-3"
-                      auto-grow
-                      hint='Use a ref like {"$ref":"request.query.mode"} or a plain string value.'
-                      label="Switch value"
-                      persistent-hint
-                      rows="3"
-                      spellcheck="false"
-                      :error-messages="switchValueError ? [switchValueError] : []"
-                      :model-value="switchValueText"
-                      @update:model-value="handleSwitchValueInput(String($event ?? ''))"
-                    />
-
-                    <div class="route-flow-editor__snippet-row mt-3">
-                      <span class="text-caption text-medium-emphasis">Branch paths</span>
-                      <div class="text-caption text-medium-emphasis mt-2">
-                        Drag from the <strong>Case</strong> or <strong>Default</strong> ports on the node. Keep Switch
-                        selected and add another node from the palette whenever you want another case path.
-                      </div>
-                      <div class="d-flex flex-column ga-3 mt-2">
-                        <div
-                          v-for="connection in selectedNodeOutgoingConnections"
-                          :key="connection.id"
-                          class="route-flow-editor__branch-row"
-                        >
-                          <div class="text-body-2 font-weight-medium">{{ connection.targetLabel }}</div>
-                          <v-select
-                            :items="SWITCH_BRANCH_OPTIONS"
-                            item-title="title"
-                            item-value="value"
-                            label="Path type"
-                            :model-value="connection.branch"
-                            @update:model-value="updateSwitchBranchMode(connection.id, String($event ?? ''))"
-                          />
-                          <v-text-field
-                            v-if="connection.branch === 'case'"
-                            label="Case value"
-                            :model-value="stringifyFlexibleValue(connection.caseValue)"
-                            @update:model-value="updateSwitchCaseValue(connection.id, String($event ?? ''))"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </template>
-
-                  <template v-else-if="selectedCanvasNode.data.runtimeType === 'http_request'">
-                    <v-alert class="mt-3" border="start" color="info" variant="tonal">
-                      HTTP Request calls an upstream URL through a saved shared connection. Path fields support inline tokens
-                      like <code v-pre>{{request.path.deviceId}}</code>.
-                    </v-alert>
-
-                    <v-select
-                      class="mt-4"
-                      v-model="selectedNodeConnectionId"
-                      :items="httpConnectionOptions"
-                      clearable
-                      label="HTTP connection"
-                    />
-                    <v-select
-                      v-model="selectedNodeHttpMethod"
-                      :items="HTTP_METHOD_OPTIONS"
-                      label="Method"
-                    />
-                    <v-text-field
-                      hint="Use a relative path such as /devices/{{request.path.deviceId}} or a full absolute URL."
-                      label="Path or URL template"
-                      persistent-hint
-                      :model-value="httpPathText"
-                      @update:model-value="handleHttpPathInput(String($event ?? ''))"
-                    />
-                    <v-text-field
-                      v-model="selectedNodeTimeoutMs"
-                      label="Timeout (ms)"
-                    />
-                    <v-textarea
-                      class="mt-2"
-                      auto-grow
-                      hint='Optional JSON object of query params, for example {"include":{"$ref":"request.query.include"}}.'
-                      label="Query params JSON"
-                      persistent-hint
-                      rows="5"
-                      spellcheck="false"
-                      :error-messages="httpQueryError ? [httpQueryError] : []"
-                      :model-value="httpQueryText"
-                      @update:model-value="handleHttpQueryInput(String($event ?? ''))"
-                    />
-                    <v-textarea
-                      auto-grow
-                      hint='Optional JSON object of headers. Connection-level headers still apply automatically.'
-                      label="Request headers JSON"
-                      persistent-hint
-                      rows="5"
-                      spellcheck="false"
-                      :error-messages="httpHeadersError ? [httpHeadersError] : []"
-                      :model-value="httpHeadersText"
-                      @update:model-value="handleHttpHeadersInput(String($event ?? ''))"
-                    />
-                    <v-textarea
-                      auto-grow
-                      hint='Optional JSON body sent to the upstream request.'
-                      label="Request body JSON"
-                      persistent-hint
-                      rows="6"
-                      spellcheck="false"
-                      :error-messages="httpBodyError ? [httpBodyError] : []"
-                      :model-value="httpBodyText"
-                      @update:model-value="handleHttpBodyInput(String($event ?? ''))"
-                    />
-                  </template>
-
-                  <template v-else-if="selectedCanvasNode.data.runtimeType === 'postgres_query'">
-                    <v-alert class="mt-3" border="start" color="info" variant="tonal">
-                      Postgres Query is limited to a single read-only <code>SELECT</code> or <code>WITH</code> statement and
-                      uses named parameters instead of raw string interpolation.
-                    </v-alert>
-
-                    <v-select
-                      class="mt-4"
-                      v-model="selectedNodeConnectionId"
-                      :items="postgresConnectionOptions"
-                      clearable
-                      label="Postgres connection"
-                    />
-                    <v-textarea
-                      auto-grow
-                      hint="Use placeholders like %(order_id)s in one read-only statement."
-                      label="SQL"
-                      persistent-hint
-                      rows="7"
-                      spellcheck="false"
-                      :model-value="postgresSqlText"
-                      @update:model-value="handlePostgresSqlInput(String($event ?? ''))"
-                    />
-                    <v-textarea
-                      auto-grow
-                      hint='Map placeholders to refs, for example {"order_id":{"$ref":"request.path.orderId"}}.'
-                      label="Parameters JSON"
-                      persistent-hint
-                      rows="6"
-                      spellcheck="false"
-                      :error-messages="postgresParametersError ? [postgresParametersError] : []"
-                      :model-value="postgresParametersText"
-                      @update:model-value="handlePostgresParametersInput(String($event ?? ''))"
-                    />
-                  </template>
-
-                  <template v-else-if="selectedCanvasNode.data.runtimeType === 'set_response'">
-                    <v-text-field class="mt-3" v-model="selectedNodeStatusCode" label="Status code" />
-
-                    <div class="route-flow-editor__snippet-row">
-                      <span class="text-caption text-medium-emphasis">Quick refs</span>
-                      <div class="d-flex flex-wrap ga-2">
-                        <v-chip
-                          v-for="snippet in responseReferenceSnippets"
-                          :key="snippet.value"
-                          label
-                          size="small"
-                          variant="outlined"
-                          @click="applyReferenceSnippet('response', snippet.value)"
-                        >
-                          {{ snippet.label }}
-                        </v-chip>
-                      </div>
-                    </div>
-
-                    <v-textarea
-                      class="mt-3"
-                      auto-grow
-                      hint='Response bodies can be fixed JSON or ref-driven JSON such as {"$ref":"state.transform"}.'
-                      label="Response body JSON"
-                      persistent-hint
-                      rows="11"
-                      spellcheck="false"
-                      :error-messages="responseBodyError ? [responseBodyError] : []"
-                      :model-value="responseBodyText"
-                      @update:model-value="handleResponseBodyInput(String($event ?? ''))"
-                    />
-                  </template>
-
-                  <template v-else-if="selectedCanvasNode.data.runtimeType === 'error_response'">
-                    <v-text-field class="mt-3" v-model="selectedNodeStatusCode" label="Error response status" />
-
-                    <div class="route-flow-editor__snippet-row">
-                      <span class="text-caption text-medium-emphasis">Quick refs</span>
-                      <div class="d-flex flex-wrap ga-2">
-                        <v-chip
-                          v-for="snippet in ERROR_REFERENCE_SNIPPETS"
-                          :key="snippet.value"
-                          label
-                          size="small"
-                          variant="outlined"
-                          @click="applyReferenceSnippet('error', snippet.value)"
-                        >
-                          {{ snippet.label }}
-                        </v-chip>
-                      </div>
-                    </div>
-
-                    <v-textarea
-                      class="mt-3"
-                      auto-grow
-                      hint="Returned when Validate Request fails, or when any other flow path explicitly routes into Error Response."
-                      label="Error response body JSON"
-                      persistent-hint
-                      rows="11"
-                      spellcheck="false"
-                      :error-messages="errorBodyError ? [errorBodyError] : []"
-                      :model-value="errorBodyText"
-                      @update:model-value="handleErrorBodyInput(String($event ?? ''))"
-                    />
-                  </template>
-                </v-sheet>
-              </v-col>
-            </v-row>
-          </div>
-
-          <div v-else class="route-flow-editor__empty-state mt-4">
-            <v-icon icon="mdi-cursor-default-click-outline" size="22" />
-            <span>Select a node on the canvas to open its editing dock.</span>
-          </div>
+            <div v-else class="route-flow-editor__empty-state mt-4">
+              <v-icon icon="mdi-cursor-default-click-outline" size="22" />
+              <span>Select a node on the canvas to open its editing dock.</span>
+            </div>
           </v-sheet>
         </v-col>
 
         <v-col v-if="!isFocusMode" cols="12" xl="4">
-        <div class="d-flex flex-column ga-4">
-          <v-sheet class="route-flow-editor__side-panel pa-4" rounded="xl">
-            <div class="route-flow-editor__panel-eyebrow">Flow signals</div>
+          <div class="d-flex flex-column ga-4">
+            <v-sheet class="route-flow-editor__side-panel pa-4" rounded="xl">
+              <div class="route-flow-editor__panel-eyebrow">Flow signals</div>
 
-            <v-alert
-              v-if="errorMessage"
-              class="mt-3"
-              border="start"
-              color="error"
-              variant="tonal"
-            >
-              {{ errorMessage }}
-            </v-alert>
-
-            <v-alert
-              v-if="allValidationMessages.length > 0"
-              class="mt-3"
-              border="start"
-              color="warning"
-              variant="tonal"
-            >
-              <div class="font-weight-medium mb-2">Fix these flow issues before saving</div>
-              <ul class="route-flow-editor__message-list">
-                <li v-for="message in allValidationMessages" :key="message">{{ message }}</li>
-              </ul>
-            </v-alert>
-
-            <v-alert
-              v-else
-              class="mt-3"
-              border="start"
-              color="success"
-              variant="tonal"
-            >
-              The current live flow is structurally valid for this runtime slice.
-            </v-alert>
-          </v-sheet>
-
-          <v-sheet class="route-flow-editor__side-panel pa-4" rounded="xl">
-            <div class="route-flow-editor__panel-eyebrow mb-3">Route paths</div>
-
-            <div v-if="connectionSummaries.length === 0" class="text-body-2 text-medium-emphasis">
-              No paths yet. Select a node, then click or drag a palette node to append it, or draw directly between the
-              visible canvas ports.
-            </div>
-
-            <div v-else class="d-flex flex-column ga-2">
-              <div
-                v-for="connection in connectionSummaries"
-                :key="connection.id"
-                class="route-flow-editor__connection-row"
+              <v-alert
+                v-if="errorMessage"
+                class="mt-3"
+                border="start"
+                color="error"
+                variant="tonal"
               >
-                <div class="text-body-2">
-                  <strong>{{ connection.source }}</strong>
-                  <span v-if="connection.label" class="text-medium-emphasis"> via {{ connection.label }}</span>
-                  <span class="text-medium-emphasis"> to </span>
-                  <strong>{{ connection.target }}</strong>
-                </div>
-                <v-btn
-                  color="error"
-                  icon="mdi-close"
-                  size="x-small"
-                  variant="text"
-                  @click="removeConnection(connection.id)"
-                />
-              </div>
-            </div>
-          </v-sheet>
+                {{ errorMessage }}
+              </v-alert>
 
-          <v-expansion-panels
-            v-model="isDesignerJsonOpen"
-            class="route-flow-editor__json-panel"
-            variant="accordion"
-          >
-            <v-expansion-panel :value="0" elevation="0">
-              <v-expansion-panel-title>Designer JSON</v-expansion-panel-title>
-              <v-expansion-panel-text>
-                <pre class="route-flow-editor__json-preview">{{ flowDefinitionPreview }}</pre>
-              </v-expansion-panel-text>
-            </v-expansion-panel>
-          </v-expansion-panels>
-        </div>
+              <v-alert
+                v-if="allValidationMessages.length > 0"
+                class="mt-3"
+                border="start"
+                color="warning"
+                variant="tonal"
+              >
+                <div class="font-weight-medium mb-2">Fix these flow issues before saving</div>
+                <ul class="route-flow-editor__message-list">
+                  <li v-for="message in allValidationMessages" :key="message">{{ message }}</li>
+                </ul>
+              </v-alert>
+
+              <v-alert
+                v-else
+                class="mt-3"
+                border="start"
+                color="success"
+                variant="tonal"
+              >
+                The current live flow is structurally valid for this runtime slice.
+              </v-alert>
+            </v-sheet>
+
+            <v-sheet class="route-flow-editor__side-panel pa-4" rounded="xl">
+              <div class="route-flow-editor__panel-eyebrow mb-3">Route paths</div>
+
+              <div v-if="connectionSummaries.length === 0" class="text-body-2 text-medium-emphasis">
+                No paths yet. Select a node, then click or drag a palette node to append it, or draw directly between the
+                visible canvas ports.
+              </div>
+
+              <div v-else class="d-flex flex-column ga-2">
+                <div
+                  v-for="connection in connectionSummaries"
+                  :key="connection.id"
+                  class="route-flow-editor__connection-row"
+                >
+                  <div class="text-body-2">
+                    <strong>{{ connection.source }}</strong>
+                    <span v-if="connection.label" class="text-medium-emphasis"> via {{ connection.label }}</span>
+                    <span class="text-medium-emphasis"> to </span>
+                    <strong>{{ connection.target }}</strong>
+                  </div>
+                  <v-btn
+                    color="error"
+                    icon="mdi-close"
+                    size="x-small"
+                    variant="text"
+                    @click="removeConnection(connection.id)"
+                  />
+                </div>
+              </div>
+            </v-sheet>
+
+            <v-expansion-panels
+              v-model="isDesignerJsonOpen"
+              class="route-flow-editor__json-panel"
+              variant="accordion"
+            >
+              <v-expansion-panel :value="0" elevation="0">
+                <v-expansion-panel-title>Designer JSON</v-expansion-panel-title>
+                <v-expansion-panel-text>
+                  <pre class="route-flow-editor__json-preview">{{ flowDefinitionPreview }}</pre>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+          </div>
         </v-col>
       </v-row>
     </div>

@@ -87,6 +87,8 @@ const summaryLine = computed(() => {
       return `Returns ${String(props.data.config.status_code ?? 200)}`;
     case "error_response":
       return `Fails with ${String(props.data.config.status_code ?? 400)}`;
+    default:
+      return props.data.title;
   }
 });
 const detailLine = computed(() => {
@@ -109,6 +111,8 @@ const detailLine = computed(() => {
       return `Body: ${previewJsonShape(props.data.config.body)}`;
     case "error_response":
       return `Body: ${previewJsonShape(props.data.config.body)}`;
+    default:
+      return props.data.description;
   }
 });
 const typeBadge = computed(() => props.data.runtimeType.replaceAll("_", " "));
@@ -200,10 +204,10 @@ const sourceHandles = computed<SourceHandleDescriptor[]>(() => {
         {{ handle.label }}
       </div>
       <Handle
-        class="route-flow-node__handle route-flow-node__handle--source"
-        type="source"
         :id="handle.id"
+        class="route-flow-node__handle route-flow-node__handle--source"
         :position="Position.Right"
+        type="source"
         :style="{ top: handle.top }"
       />
     </template>
