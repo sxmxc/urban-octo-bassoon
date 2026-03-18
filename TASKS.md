@@ -4,7 +4,6 @@ This file tracks the work needed to bootstrap and evolve the project.
 Read `docs/roadmap.md` alongside this file if you are picking up the next implementation slice.
 
 ## Now
-- [ ] Unblock the normal route create/edit journey by restoring visible route identity fields and save/create actions in the standard `Overview` flow
 - [ ] Tighten the published-runtime boundary so OpenAPI, public reference, and live dispatch can move cleanly from legacy mock fallback to deployment-backed routing
 - [ ] Add an explicit route unpublish/disable-live action so operators can remove a route from the live deployment registry without deleting the route definition or draft flow
 - [ ] Make the `Test` journey honest about what is preview/example output versus what is draft/live runtime execution
@@ -119,6 +118,7 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [x] Add backend scaffolding for route implementations, deployments, connections, execution runs, and execution steps
 - [x] Add a deployment-backed live runtime path with a compiled route registry and starter flow execution engine
 - [x] Add admin API scaffolding plus route-first `Overview` / `Contract` / `Flow` / `Test` / `Deploy` workspace tabs
+- [x] Unblock the normal route create/edit journey by restoring visible route identity fields and save/create actions in the standard `Overview` flow
 - [x] Remove hardcoded old-fork GHCR references from deploy/docs defaults and make the image-only compose example repository-configurable
 - [x] Replace the raw `Flow` JSON placeholder with a real `Vue Flow`-backed live implementation editor
 - [x] Expand the live runtime beyond the starter node set with first-class `HTTP Request` and read-only `Postgres Query` connectors

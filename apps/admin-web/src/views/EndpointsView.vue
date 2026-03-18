@@ -1169,7 +1169,6 @@ const activeTitle = computed(() => {
                     :errors="fieldErrors"
                     :is-creating="props.mode === 'create'"
                     :is-saving="isSaving"
-                    :show-contract-card="false"
                     :updated-at="selectedEndpoint?.updated_at"
                     @change="applyDraftPatch"
                     @delete="handleDelete"

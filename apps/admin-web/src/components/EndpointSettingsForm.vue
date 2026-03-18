@@ -13,7 +13,6 @@ const props = withDefaults(
     errors: Record<string, string>;
     isCreating: boolean;
     isSaving: boolean;
-    showContractCard?: boolean;
     updatedAt?: string;
   }>(),
   {
@@ -21,7 +20,6 @@ const props = withDefaults(
     availableTags: () => [],
     createdAt: undefined,
     endpointId: undefined,
-    showContractCard: true,
     updatedAt: undefined,
   },
 );
@@ -93,7 +91,7 @@ function numberPatch(field: keyof EndpointDraft, value: string | number | null):
 
 <template>
   <v-form class="d-flex flex-column ga-5" @submit.prevent="emit('submit')">
-    <v-card v-if="showContractCard" class="workspace-card">
+    <v-card class="workspace-card">
       <v-card-item>
         <v-card-title>{{ isCreating ? "Create route" : draft.name || "Untitled route" }}</v-card-title>
         <v-card-subtitle>

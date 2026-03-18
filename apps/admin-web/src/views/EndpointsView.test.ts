@@ -113,10 +113,22 @@ const EndpointSettingsFormStub = defineComponent({
       type: Object as () => EndpointDraft,
       required: true,
     },
+    isCreating: {
+      type: Boolean,
+      default: false,
+    },
+    showContractCard: {
+      type: Boolean,
+      default: true,
+    },
   },
   emits: ["change", "delete", "duplicate", "open-schema", "preview", "submit"],
   template: `
     <div>
+      <div v-if="showContractCard">
+        <div data-testid="identity-fields">Name Method Path</div>
+        <button type="button">{{ isCreating ? "Create route" : "Save changes" }}</button>
+      </div>
       <div data-testid="draft-name">{{ draft.name }}</div>
       <button type="button" @click="$emit('change', { name: 'Working copy' })">Edit draft</button>
     </div>
@@ -394,6 +406,26 @@ describe("EndpointsView", () => {
       name: "endpoint-preview",
       params: { endpointId: 1 },
     });
+  });
+
+  it("keeps route identity fields and the create action visible on the overview create flow", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([]);
+
+    await renderView("/endpoints/new", "create");
+    await flushPromises();
+
+    expect(screen.getByTestId("identity-fields")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create route" })).toBeInTheDocument();
+  });
+
+  it("keeps route identity fields and the save action visible on the overview edit flow", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
+
+    await renderView("/endpoints/1", "edit");
+    await flushPromises();
+
+    expect(screen.getByTestId("identity-fields")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
   });
 
   it("shows route-first tabs and loads flow scaffolding for an existing route", async () => {
