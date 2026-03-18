@@ -4,6 +4,45 @@ export interface JsonObject {
   [key: string]: JsonValue;
 }
 
+export type RouteFlowNodeType =
+  | "api_trigger"
+  | "validate_request"
+  | "transform"
+  | "if_condition"
+  | "switch"
+  | "http_request"
+  | "postgres_query"
+  | "set_response"
+  | "error_response";
+
+export interface RouteFlowPosition extends JsonObject {
+  x: number;
+  y: number;
+}
+
+export interface RouteFlowNode {
+  id: string;
+  type: RouteFlowNodeType;
+  name: string;
+  config: JsonObject;
+  position?: RouteFlowPosition;
+  extra?: JsonObject;
+}
+
+export interface RouteFlowEdge {
+  id?: string;
+  source: string;
+  target: string;
+  extra?: JsonObject;
+}
+
+export interface RouteFlowDefinition {
+  schema_version: number;
+  nodes: RouteFlowNode[];
+  edges: RouteFlowEdge[];
+  extra?: JsonObject;
+}
+
 export type AdminRole = "viewer" | "editor" | "superuser";
 export type AdminPermission = "routes.read" | "routes.write" | "routes.preview" | "users.manage";
 
@@ -166,4 +205,85 @@ export interface EndpointDraft {
 
 export interface PreviewResponsePayload {
   preview: JsonValue;
+}
+
+export type ConnectionType = "http" | "postgres";
+
+export interface RouteImplementation {
+  id: number | null;
+  route_id: number;
+  version: number;
+  is_draft: boolean;
+  flow_definition: JsonObject;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface RouteImplementationPayload {
+  flow_definition: JsonObject;
+}
+
+export interface RouteDeployment {
+  id: number;
+  route_id: number;
+  implementation_id: number;
+  environment: string;
+  is_active: boolean;
+  published_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RouteDeploymentPublishPayload {
+  environment: string;
+}
+
+export interface ConnectionPayload {
+  name: string;
+  connector_type: ConnectionType;
+  description?: string | null;
+  config: JsonObject;
+  is_active?: boolean;
+}
+
+export interface Connection extends ConnectionPayload {
+  id: number;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExecutionStep {
+  id: number;
+  node_id: string;
+  node_type: string;
+  order_index: number;
+  status: string;
+  input_data: JsonObject;
+  output_data: JsonObject | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
+export interface ExecutionRun {
+  id: number;
+  route_id: number;
+  deployment_id: number | null;
+  implementation_id: number | null;
+  environment: string;
+  method: string;
+  path: string;
+  status: string;
+  request_data: JsonObject;
+  response_status_code: number | null;
+  response_body: JsonObject | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
+export interface ExecutionRunDetail extends ExecutionRun {
+  steps: ExecutionStep[];
 }

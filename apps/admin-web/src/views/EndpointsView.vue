@@ -1,19 +1,27 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   AdminApiError,
+  getCurrentRouteImplementation,
+  listConnections,
   createEndpoint,
   deleteEndpoint,
   exportEndpointBundle,
   importEndpointBundle,
+  listExecutions,
   listEndpoints,
+  listRouteDeployments,
+  publishRouteImplementation,
+  saveCurrentRouteImplementation,
   updateEndpoint,
 } from "../api/admin";
 import EndpointCatalog from "../components/EndpointCatalog.vue";
 import EndpointSettingsForm from "../components/EndpointSettingsForm.vue";
+import RouteFlowEditor from "../components/RouteFlowEditor.vue";
 import { useAuth } from "../composables/useAuth";
 import type {
+  Connection,
   Endpoint,
   EndpointBundle,
   EndpointDraft,
@@ -21,17 +29,25 @@ import type {
   EndpointImportOperation,
   EndpointImportResponse,
   EndpointImportSummary,
+  ExecutionRun,
+  RouteFlowDefinition,
+  RouteDeployment,
+  RouteImplementation,
 } from "../types/endpoints";
+import { normalizeRouteFlowDefinition, serializeRouteFlowDefinition } from "../utils/routeFlow";
 import {
   buildPayload,
   createDuplicateDraft,
   createEmptyDraft,
   describeAdminError,
+  describeSchema,
   draftFromEndpoint,
 } from "../utils/endpointDrafts";
 
 const CATALOG_BACKGROUND_REFRESH_MS = 30_000;
 const CATALOG_STALE_AFTER_MS = 15_000;
+type RouteWorkspaceTab = "overview" | "contract" | "flow" | "test" | "deploy";
+const ROUTE_WORKSPACE_TABS: RouteWorkspaceTab[] = ["overview", "contract", "flow", "test", "deploy"];
 
 const props = defineProps<{
   mode: "browse" | "create" | "edit";
@@ -59,6 +75,20 @@ const importPreview = ref<EndpointImportResponse | null>(null);
 const importError = ref<string | null>(null);
 const isPreviewingImport = ref(false);
 const isApplyingImport = ref(false);
+const currentImplementation = ref<RouteImplementation | null>(null);
+const flowEditorError = ref<string | null>(null);
+const flowValidationError = ref<string | null>(null);
+const flowDraftDefinition = shallowRef<RouteFlowDefinition>(normalizeRouteFlowDefinition({}));
+const isFlowEditorInFocusMode = ref(false);
+const isLoadingImplementation = ref(false);
+const isSavingImplementation = ref(false);
+const deployments = ref<RouteDeployment[]>([]);
+const isLoadingDeployments = ref(false);
+const isPublishingDeployment = ref(false);
+const executions = ref<ExecutionRun[]>([]);
+const isLoadingExecutions = ref(false);
+const connections = ref<Connection[]>([]);
+const isLoadingConnections = ref(false);
 
 let catalogRefreshTimer: number | null = null;
 let pendingCatalogRequest: Promise<void> | null = null;
@@ -121,6 +151,17 @@ const savedQueryFlag = computed(() => {
   const rawValue = Array.isArray(route.query.saved) ? route.query.saved[0] : route.query.saved;
   return rawValue === "1";
 });
+const activeWorkspaceTab = computed<RouteWorkspaceTab>(() => {
+  const rawTab = Array.isArray(route.query.tab) ? route.query.tab[0] : route.query.tab;
+  if (typeof rawTab === "string" && ROUTE_WORKSPACE_TABS.includes(rawTab as RouteWorkspaceTab)) {
+    if (props.mode === "create" && rawTab !== "overview") {
+      return "overview";
+    }
+    return rawTab as RouteWorkspaceTab;
+  }
+
+  return "overview";
+});
 
 const isInitialCatalogLoad = computed(() => isLoading.value && endpoints.value.length === 0);
 const isSelectedEndpointDraftDirty = computed(() => {
@@ -164,6 +205,56 @@ const canApplyImport = computed(() =>
 );
 const canWriteRoutes = computed(() => auth.canWriteRoutes.value && !auth.mustChangePassword.value);
 const canPreviewRoutes = computed(() => auth.canPreviewRoutes.value && !auth.mustChangePassword.value);
+const requestSummary = computed(() => describeSchema(draft.value.request_schema, "request"));
+const responseSummary = computed(() => describeSchema(draft.value.response_schema, "response"));
+const routeTabs = computed(() => [
+  {
+    title: "Overview",
+    value: "overview" as RouteWorkspaceTab,
+    disabled: false,
+  },
+  {
+    title: "Contract",
+    value: "contract" as RouteWorkspaceTab,
+    disabled: props.mode === "create",
+  },
+  {
+    title: "Flow",
+    value: "flow" as RouteWorkspaceTab,
+    disabled: props.mode === "create",
+  },
+  {
+    title: "Test",
+    value: "test" as RouteWorkspaceTab,
+    disabled: props.mode === "create",
+  },
+  {
+    title: "Deploy",
+    value: "deploy" as RouteWorkspaceTab,
+    disabled: props.mode === "create",
+  },
+]);
+const implementationNodeCount = computed(() => {
+  return flowDraftDefinition.value.nodes.length;
+});
+const implementationEdgeCount = computed(() => {
+  return flowDraftDefinition.value.edges.length;
+});
+function serializeFlowDefinitionForComparison(definition: RouteFlowDefinition): string {
+  return JSON.stringify(serializeRouteFlowDefinition(definition));
+}
+
+const formattedCurrentFlowDefinition = computed(() =>
+  serializeFlowDefinitionForComparison(normalizeRouteFlowDefinition(currentImplementation.value?.flow_definition ?? {})),
+);
+const serializedFlowDraftDefinition = computed(() => serializeFlowDefinitionForComparison(flowDraftDefinition.value));
+const isFlowDirty = computed(
+  () =>
+    props.mode === "edit" &&
+    Boolean(selectedEndpoint.value) &&
+    serializedFlowDraftDefinition.value !== formattedCurrentFlowDefinition.value,
+);
+const activeDeployment = computed(() => deployments.value.find((deployment) => deployment.is_active) ?? null);
 
 function mergeEndpointCatalog(nextEndpoints: Endpoint[]): Endpoint[] {
   const currentEndpointsById = new Map(endpoints.value.map((endpoint) => [endpoint.id, endpoint]));
@@ -302,16 +393,49 @@ watch(
 );
 
 watch(
-  () => props.mode,
-  (mode, previousMode) => {
-    if (mode !== "browse" || mode === previousMode) {
+  () => selectedEndpoint.value?.id ?? null,
+  (currentEndpointId, previousEndpointId) => {
+    if (props.mode !== "edit" || !currentEndpointId || currentEndpointId === previousEndpointId) {
+      if (!currentEndpointId) {
+        currentImplementation.value = null;
+        deployments.value = [];
+        executions.value = [];
+        flowEditorError.value = null;
+        flowValidationError.value = null;
+        flowDraftDefinition.value = normalizeRouteFlowDefinition({});
+      }
       return;
     }
 
-    fieldErrors.value = {};
-    pageError.value = null;
-    if (!savedQueryFlag.value) {
-      pageSuccess.value = null;
+    void loadRouteRuntimeScaffolding(currentEndpointId);
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.mode,
+  (mode, previousMode) => {
+    if (mode === previousMode) {
+      return;
+    }
+
+    if (mode === "browse") {
+      fieldErrors.value = {};
+      pageError.value = null;
+      if (!savedQueryFlag.value) {
+        pageSuccess.value = null;
+      }
+    }
+
+    if (mode === "create") {
+      setActiveWorkspaceTab("overview");
+      currentImplementation.value = null;
+      deployments.value = [];
+      executions.value = [];
+      flowEditorError.value = null;
+      flowValidationError.value = null;
+      flowDraftDefinition.value = normalizeRouteFlowDefinition({});
+      isFlowEditorInFocusMode.value = false;
     }
   },
 );
@@ -333,6 +457,20 @@ watch(importDialog, (isOpen) => {
   importError.value = null;
   isPreviewingImport.value = false;
   isApplyingImport.value = false;
+});
+
+watch(serializedFlowDraftDefinition, (currentValue, previousValue) => {
+  if (previousValue === undefined || currentValue === previousValue) {
+    return;
+  }
+
+  flowEditorError.value = null;
+});
+
+watch(activeWorkspaceTab, (tab) => {
+  if (tab !== "flow") {
+    isFlowEditorInFocusMode.value = false;
+  }
 });
 
 function handleWindowFocus(): void {
@@ -383,6 +521,159 @@ function applyDraftPatch(patch: Partial<EndpointDraft>): void {
     ...draft.value,
     ...patch,
   };
+}
+
+function setActiveWorkspaceTab(tab: RouteWorkspaceTab | null): void {
+  const nextTab = tab ?? "overview";
+  if (!ROUTE_WORKSPACE_TABS.includes(nextTab) || (props.mode === "create" && nextTab !== "overview")) {
+    return;
+  }
+
+  const nextQuery = { ...route.query };
+  if (nextTab === "overview") {
+    delete nextQuery.tab;
+  } else {
+    nextQuery.tab = nextTab;
+  }
+
+  void router.replace({
+    query: nextQuery,
+  });
+}
+
+function formatTimestamp(value: string | null | undefined): string {
+  return value ? new Date(value).toLocaleString() : "Not available yet";
+}
+
+function deploymentStatusColor(isActive: boolean): string {
+  return isActive ? "accent" : "secondary";
+}
+
+function executionStatusColor(status: string): string {
+  if (status === "success") {
+    return "accent";
+  }
+  if (status === "validation_error") {
+    return "warning";
+  }
+  return "error";
+}
+
+async function loadRouteRuntimeScaffolding(endpointId: number): Promise<void> {
+  if (!auth.session.value) {
+    return;
+  }
+
+  isLoadingImplementation.value = true;
+  isLoadingDeployments.value = true;
+  isLoadingExecutions.value = true;
+  isLoadingConnections.value = true;
+  flowEditorError.value = null;
+  flowValidationError.value = null;
+
+  try {
+    const [implementation, nextDeployments, nextExecutions, nextConnections] = await Promise.all([
+      getCurrentRouteImplementation(endpointId, auth.session.value),
+      listRouteDeployments(endpointId, auth.session.value),
+      listExecutions(auth.session.value, { endpointId, limit: 12 }),
+      listConnections(auth.session.value),
+    ]);
+
+    currentImplementation.value = implementation;
+    flowDraftDefinition.value = normalizeRouteFlowDefinition(implementation.flow_definition ?? {});
+    deployments.value = nextDeployments;
+    executions.value = nextExecutions;
+    connections.value = nextConnections;
+  } catch (error) {
+    if (error instanceof AdminApiError && error.status === 401) {
+      void auth.logout("Your admin session expired. Sign in again to keep working on route implementations.");
+      void router.push({ name: "login" });
+      return;
+    }
+
+    pageError.value = describeAdminError(error, "Unable to load route implementation scaffolding.");
+  } finally {
+    isLoadingImplementation.value = false;
+    isLoadingDeployments.value = false;
+    isLoadingExecutions.value = false;
+    isLoadingConnections.value = false;
+  }
+}
+
+async function refreshRouteRuntimeScaffolding(): Promise<void> {
+  if (!selectedEndpoint.value) {
+    return;
+  }
+
+  await loadRouteRuntimeScaffolding(selectedEndpoint.value.id);
+}
+
+async function saveFlowDefinition(): Promise<void> {
+  if (!auth.session.value || !selectedEndpoint.value) {
+    pageError.value = "Save the route first, then sign in again before editing the flow.";
+    return;
+  }
+
+  if (flowValidationError.value) {
+    flowEditorError.value = flowValidationError.value;
+    return;
+  }
+
+  isSavingImplementation.value = true;
+  pageError.value = null;
+  pageSuccess.value = null;
+
+  try {
+    const implementation = await saveCurrentRouteImplementation(
+      selectedEndpoint.value.id,
+      { flow_definition: serializeRouteFlowDefinition(flowDraftDefinition.value) },
+      auth.session.value,
+    );
+    currentImplementation.value = implementation;
+    flowDraftDefinition.value = normalizeRouteFlowDefinition(implementation.flow_definition ?? {});
+    pageSuccess.value = `Saved live flow draft v${implementation.version}.`;
+  } catch (error) {
+    if (error instanceof AdminApiError && error.status === 401) {
+      void auth.logout("Your admin session expired. Sign in again before saving the route flow.");
+      void router.push({ name: "login" });
+      return;
+    }
+
+    flowEditorError.value = describeAdminError(error, "Unable to save the route flow.");
+  } finally {
+    isSavingImplementation.value = false;
+  }
+}
+
+async function publishFlowDeployment(): Promise<void> {
+  if (!auth.session.value || !selectedEndpoint.value) {
+    pageError.value = "Save the route first, then sign in again before publishing.";
+    return;
+  }
+
+  isPublishingDeployment.value = true;
+  pageError.value = null;
+  pageSuccess.value = null;
+
+  try {
+    const deployment = await publishRouteImplementation(
+      selectedEndpoint.value.id,
+      { environment: "production" },
+      auth.session.value,
+    );
+    pageSuccess.value = `Published implementation ${deployment.implementation_id} to ${deployment.environment}.`;
+    await loadRouteRuntimeScaffolding(selectedEndpoint.value.id);
+  } catch (error) {
+    if (error instanceof AdminApiError && error.status === 401) {
+      void auth.logout("Your admin session expired. Sign in again before publishing.");
+      void router.push({ name: "login" });
+      return;
+    }
+
+    pageError.value = describeAdminError(error, "Unable to publish the current route implementation.");
+  } finally {
+    isPublishingDeployment.value = false;
+  }
 }
 
 function openCreateView(): void {
@@ -850,7 +1141,26 @@ const activeTitle = computed(() => {
                     </v-card-text>
                   </v-card>
 
+                  <v-card class="workspace-card workspace-tabs-card">
+                    <v-tabs
+                      color="primary"
+                      :model-value="activeWorkspaceTab"
+                      slider-color="primary"
+                      @update:model-value="setActiveWorkspaceTab($event as RouteWorkspaceTab | null)"
+                    >
+                      <v-tab
+                        v-for="tab in routeTabs"
+                        :key="tab.value"
+                        :disabled="tab.disabled"
+                        :value="tab.value"
+                      >
+                        {{ tab.title }}
+                      </v-tab>
+                    </v-tabs>
+                  </v-card>
+
                   <EndpointSettingsForm
+                    v-if="activeWorkspaceTab === 'overview'"
                     :available-categories="availableCategories"
                     :available-tags="availableTags"
                     :created-at="selectedEndpoint?.created_at"
@@ -859,6 +1169,7 @@ const activeTitle = computed(() => {
                     :errors="fieldErrors"
                     :is-creating="props.mode === 'create'"
                     :is-saving="isSaving"
+                    :show-contract-card="false"
                     :updated-at="selectedEndpoint?.updated_at"
                     @change="applyDraftPatch"
                     @delete="handleDelete"
@@ -867,6 +1178,351 @@ const activeTitle = computed(() => {
                     @preview="openPreview"
                     @submit="handleSave"
                   />
+
+                  <template v-else-if="activeWorkspaceTab === 'contract'">
+                    <v-card class="workspace-card">
+                      <v-card-item>
+                        <template #prepend>
+                          <v-avatar color="secondary" variant="tonal">
+                            <v-icon icon="mdi-file-document-outline" />
+                          </v-avatar>
+                        </template>
+                        <v-card-title>Contract</v-card-title>
+                        <v-card-subtitle>
+                          Request and response schemas remain the public contract source of truth.
+                        </v-card-subtitle>
+
+                        <template #append>
+                          <div class="d-flex flex-wrap justify-end ga-2">
+                            <v-btn
+                              color="secondary"
+                              prepend-icon="mdi-shape-outline"
+                              variant="tonal"
+                              @click="openSchemaStudio"
+                            >
+                              Open schema editor
+                            </v-btn>
+                            <v-btn
+                              v-if="canPreviewRoutes"
+                              prepend-icon="mdi-flask-outline"
+                              variant="text"
+                              @click="openPreview"
+                            >
+                              Test route
+                            </v-btn>
+                          </div>
+                        </template>
+                      </v-card-item>
+
+                      <v-divider />
+
+                      <v-card-text class="d-flex flex-column ga-4">
+                        <div class="d-flex flex-wrap ga-2">
+                          <v-chip color="primary" label size="small" variant="tonal">{{ draft.method }}</v-chip>
+                          <v-chip label size="small" variant="outlined">{{ draft.path }}</v-chip>
+                          <v-chip label size="small" variant="outlined">Auth: {{ draft.auth_mode }}</v-chip>
+                          <v-chip label size="small" variant="outlined">Success: {{ draft.success_status_code }}</v-chip>
+                        </div>
+
+                        <v-row>
+                          <v-col cols="12" md="6">
+                            <v-sheet class="schema-summary-card" rounded="xl">
+                              <div class="text-overline text-medium-emphasis">Request contract</div>
+                              <div class="text-h6">Current shape</div>
+                              <div class="text-body-2 text-medium-emphasis">{{ requestSummary }}</div>
+                            </v-sheet>
+                          </v-col>
+                          <v-col cols="12" md="6">
+                            <v-sheet class="schema-summary-card" rounded="xl">
+                              <div class="text-overline text-medium-emphasis">Response contract</div>
+                              <div class="text-h6">Current shape</div>
+                              <div class="text-body-2 text-medium-emphasis">{{ responseSummary }}</div>
+                            </v-sheet>
+                          </v-col>
+                        </v-row>
+
+                        <v-alert border="start" color="info" variant="tonal">
+                          Contract authoring still lives in the dedicated schema editor while the route-first tabs settle in.
+                        </v-alert>
+                      </v-card-text>
+                    </v-card>
+                  </template>
+
+                  <template v-else-if="activeWorkspaceTab === 'flow'">
+                    <v-card class="workspace-card">
+                      <v-card-item>
+                        <template #prepend>
+                          <v-avatar color="accent" variant="tonal">
+                            <v-icon icon="mdi-graph-outline" />
+                          </v-avatar>
+                        </template>
+                        <v-card-title>Flow</v-card-title>
+                        <v-card-subtitle>
+                          Design the live API data flow here while keeping the public contract in the separate Contract journey.
+                        </v-card-subtitle>
+
+                        <template #append>
+                          <div class="d-flex flex-wrap justify-end ga-2">
+                            <v-btn prepend-icon="mdi-refresh" variant="text" @click="refreshRouteRuntimeScaffolding">
+                              Refresh
+                            </v-btn>
+                            <v-btn
+                              color="primary"
+                              :disabled="!isFlowDirty || Boolean(flowValidationError)"
+                              :loading="isSavingImplementation"
+                              prepend-icon="mdi-content-save-outline"
+                              @click="saveFlowDefinition"
+                            >
+                              Save flow
+                            </v-btn>
+                          </div>
+                        </template>
+                      </v-card-item>
+
+                      <v-divider />
+
+                      <v-card-text class="d-flex flex-column ga-4">
+                        <div class="d-flex flex-wrap ga-2">
+                          <v-chip color="primary" label size="small" variant="tonal">
+                            v{{ currentImplementation?.version ?? 1 }}
+                          </v-chip>
+                          <v-chip
+                            :color="currentImplementation?.is_draft === false ? 'accent' : 'warning'"
+                            label
+                            size="small"
+                            variant="tonal"
+                          >
+                            {{ currentImplementation?.is_draft === false ? "Published base" : "Draft" }}
+                          </v-chip>
+                          <v-chip label size="small" variant="outlined">{{ implementationNodeCount }} nodes</v-chip>
+                          <v-chip label size="small" variant="outlined">{{ implementationEdgeCount }} edges</v-chip>
+                        </div>
+
+                        <v-skeleton-loader
+                          v-if="isLoadingImplementation"
+                          type="paragraph, paragraph, paragraph"
+                        />
+
+                        <RouteFlowEditor
+                          v-else
+                          v-model="flowDraftDefinition"
+                          :available-connections="connections"
+                          :error-message="flowEditorError"
+                          :success-status-code="draft.success_status_code"
+                          @focus-mode-change="isFlowEditorInFocusMode = $event"
+                          @validation-change="flowValidationError = $event"
+                        />
+                      </v-card-text>
+                    </v-card>
+
+                    <v-card v-if="!isFlowEditorInFocusMode" class="workspace-card">
+                      <v-card-item>
+                        <v-card-title>Available connections</v-card-title>
+                        <v-card-subtitle>
+                          HTTP Request and Postgres Query nodes bind to these shared connection records.
+                        </v-card-subtitle>
+                      </v-card-item>
+
+                      <v-divider />
+
+                      <v-card-text>
+                        <v-skeleton-loader v-if="isLoadingConnections" type="table-row-divider, table-row-divider" />
+                        <div v-else-if="connections.length === 0" class="text-body-2 text-medium-emphasis">
+                          No shared connections have been configured yet.
+                        </div>
+                        <div v-else class="d-flex flex-wrap ga-2">
+                          <v-chip
+                            v-for="connection in connections"
+                            :key="connection.id"
+                            color="secondary"
+                            label
+                            variant="tonal"
+                          >
+                            {{ connection.name }} · {{ connection.connector_type }}
+                          </v-chip>
+                        </div>
+                      </v-card-text>
+                    </v-card>
+                  </template>
+
+                  <template v-else-if="activeWorkspaceTab === 'test'">
+                    <v-card class="workspace-card">
+                      <v-card-item>
+                        <template #prepend>
+                          <v-avatar color="primary" variant="tonal">
+                            <v-icon icon="mdi-flask-outline" />
+                          </v-avatar>
+                        </template>
+                        <v-card-title>Test</v-card-title>
+                        <v-card-subtitle>
+                          Preview the contract output and inspect the most recent live execution attempts.
+                        </v-card-subtitle>
+
+                        <template #append>
+                          <div class="d-flex flex-wrap justify-end ga-2">
+                            <v-btn
+                              v-if="canPreviewRoutes"
+                              color="secondary"
+                              prepend-icon="mdi-flask-outline"
+                              variant="tonal"
+                              @click="openPreview"
+                            >
+                              Open test console
+                            </v-btn>
+                            <v-btn prepend-icon="mdi-refresh" variant="text" @click="refreshRouteRuntimeScaffolding">
+                              Refresh
+                            </v-btn>
+                          </div>
+                        </template>
+                      </v-card-item>
+
+                      <v-divider />
+
+                      <v-card-text class="d-flex flex-column ga-4">
+                        <v-alert border="start" color="info" variant="tonal">
+                          Contract previews still use the schema-driven example engine. Live execution history below comes from published route implementations.
+                        </v-alert>
+
+                        <v-skeleton-loader
+                          v-if="isLoadingExecutions"
+                          type="table-heading, table-row-divider, table-row-divider"
+                        />
+
+                        <div v-else-if="executions.length === 0" class="text-body-2 text-medium-emphasis">
+                          No live executions yet. Publish the route, send a request, then return here to inspect the trace history.
+                        </div>
+
+                        <div v-else class="d-flex flex-column ga-3">
+                          <v-sheet
+                            v-for="execution in executions"
+                            :key="execution.id"
+                            class="runtime-row pa-4"
+                            rounded="lg"
+                          >
+                            <div class="d-flex flex-wrap align-center justify-space-between ga-3">
+                              <div class="d-flex flex-wrap align-center ga-2">
+                                <v-chip
+                                  :color="executionStatusColor(execution.status)"
+                                  label
+                                  size="small"
+                                  variant="tonal"
+                                >
+                                  {{ execution.status }}
+                                </v-chip>
+                                <v-chip label size="small" variant="outlined">{{ execution.method }}</v-chip>
+                                <span class="font-weight-medium">{{ execution.path }}</span>
+                              </div>
+                              <div class="text-caption text-medium-emphasis">
+                                {{ formatTimestamp(execution.started_at) }}
+                              </div>
+                            </div>
+
+                            <div class="d-flex flex-wrap ga-3 mt-3 text-body-2 text-medium-emphasis">
+                              <span>Status code: {{ execution.response_status_code ?? "n/a" }}</span>
+                              <span>Environment: {{ execution.environment }}</span>
+                              <span>Implementation: {{ execution.implementation_id ?? "draft" }}</span>
+                            </div>
+                          </v-sheet>
+                        </div>
+                      </v-card-text>
+                    </v-card>
+                  </template>
+
+                  <template v-else-if="activeWorkspaceTab === 'deploy'">
+                    <v-card class="workspace-card">
+                      <v-card-item>
+                        <template #prepend>
+                          <v-avatar color="secondary" variant="tonal">
+                            <v-icon icon="mdi-rocket-launch-outline" />
+                          </v-avatar>
+                        </template>
+                        <v-card-title>Deploy</v-card-title>
+                        <v-card-subtitle>
+                          Publish the current flow implementation to the compiled runtime registry.
+                        </v-card-subtitle>
+
+                        <template #append>
+                          <div class="d-flex flex-wrap justify-end ga-2">
+                            <v-btn prepend-icon="mdi-refresh" variant="text" @click="refreshRouteRuntimeScaffolding">
+                              Refresh
+                            </v-btn>
+                            <v-btn
+                              color="primary"
+                              :loading="isPublishingDeployment"
+                              prepend-icon="mdi-rocket-launch-outline"
+                              @click="publishFlowDeployment"
+                            >
+                              Publish to production
+                            </v-btn>
+                          </div>
+                        </template>
+                      </v-card-item>
+
+                      <v-divider />
+
+                      <v-card-text class="d-flex flex-column ga-4">
+                        <div class="d-flex flex-wrap ga-3">
+                          <v-sheet class="deployment-summary-card pa-4" rounded="xl">
+                            <div class="text-overline text-medium-emphasis">Active deployment</div>
+                            <div class="text-h6">
+                              {{ activeDeployment ? `Implementation ${activeDeployment.implementation_id}` : "Not published" }}
+                            </div>
+                            <div class="text-body-2 text-medium-emphasis">
+                              {{
+                                activeDeployment
+                                  ? `Published ${formatTimestamp(activeDeployment.published_at)}`
+                                  : "Publish this route when the flow draft is ready for live traffic."
+                              }}
+                            </div>
+                          </v-sheet>
+                          <v-sheet class="deployment-summary-card pa-4" rounded="xl">
+                            <div class="text-overline text-medium-emphasis">Current draft</div>
+                            <div class="text-h6">v{{ currentImplementation?.version ?? 1 }}</div>
+                            <div class="text-body-2 text-medium-emphasis">
+                              {{ currentImplementation?.is_draft === false ? "Already promoted to a live deployment base." : "Still editable." }}
+                            </div>
+                          </v-sheet>
+                        </div>
+
+                        <v-skeleton-loader
+                          v-if="isLoadingDeployments"
+                          type="table-heading, table-row-divider, table-row-divider"
+                        />
+
+                        <div v-else-if="deployments.length === 0" class="text-body-2 text-medium-emphasis">
+                          No deployments yet. Publishing will create the first production binding and warm the compiled route registry.
+                        </div>
+
+                        <div v-else class="d-flex flex-column ga-3">
+                          <v-sheet
+                            v-for="deployment in deployments"
+                            :key="deployment.id"
+                            class="runtime-row pa-4"
+                            rounded="lg"
+                          >
+                            <div class="d-flex flex-wrap align-center justify-space-between ga-3">
+                              <div class="d-flex flex-wrap align-center ga-2">
+                                <v-chip
+                                  :color="deploymentStatusColor(deployment.is_active)"
+                                  label
+                                  size="small"
+                                  variant="tonal"
+                                >
+                                  {{ deployment.is_active ? "Active" : "Superseded" }}
+                                </v-chip>
+                                <span class="font-weight-medium">
+                                  {{ deployment.environment }} · implementation {{ deployment.implementation_id }}
+                                </span>
+                              </div>
+                              <div class="text-caption text-medium-emphasis">
+                                {{ formatTimestamp(deployment.published_at) }}
+                              </div>
+                            </div>
+                          </v-sheet>
+                        </div>
+                      </v-card-text>
+                    </v-card>
+                  </template>
                 </div>
               </v-slide-y-transition>
             </template>
@@ -1028,6 +1684,26 @@ const activeTitle = computed(() => {
   flex-direction: column;
   gap: 1rem;
   min-height: 0;
+}
+
+.workspace-tabs-card {
+  overflow: hidden;
+}
+
+.deployment-summary-card,
+.schema-summary-card,
+.runtime-row {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: color-mix(in srgb, rgb(var(--v-theme-surface)) 94%, rgb(var(--v-theme-background)) 6%);
+}
+
+.deployment-summary-card {
+  min-width: min(100%, 18rem);
+}
+
+.flow-json-editor :deep(textarea) {
+  font-family: "JetBrains Mono", "Fira Code", "Source Code Pro", monospace;
+  line-height: 1.45;
 }
 
 .import-operation-list {

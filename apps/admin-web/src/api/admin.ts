@@ -7,14 +7,22 @@ import type {
   AdminUserCreatePayload,
   AdminUserUpdatePayload,
   ChangePasswordPayload,
+  Connection,
+  ConnectionPayload,
   Endpoint,
   EndpointBundle,
   EndpointImportRequestPayload,
   EndpointImportResponse,
   EndpointPayload,
+  ExecutionRun,
+  ExecutionRunDetail,
   JsonObject,
   JsonValue,
   PreviewResponsePayload,
+  RouteDeployment,
+  RouteDeploymentPublishPayload,
+  RouteImplementation,
+  RouteImplementationPayload,
 } from "../types/endpoints";
 
 const REMEMBERED_SESSION_KEY = "mockingbird.admin-remembered-session";
@@ -24,6 +32,11 @@ interface RequestOptions {
   body?: string;
   headers?: Record<string, string>;
   method?: string;
+}
+
+interface ExecutionListOptions {
+  endpointId?: number;
+  limit?: number;
 }
 
 export class AdminApiError extends Error {
@@ -288,6 +301,70 @@ export function deleteEndpoint(endpointId: number, session: AdminSession): Promi
   return request<null>(`/api/admin/endpoints/${endpointId}`, session, {
     method: "DELETE",
   });
+}
+
+export function getCurrentRouteImplementation(
+  endpointId: number,
+  session: AdminSession,
+): Promise<RouteImplementation> {
+  return request<RouteImplementation>(`/api/admin/endpoints/${endpointId}/implementation/current`, session);
+}
+
+export function saveCurrentRouteImplementation(
+  endpointId: number,
+  payload: RouteImplementationPayload,
+  session: AdminSession,
+): Promise<RouteImplementation> {
+  return request<RouteImplementation>(`/api/admin/endpoints/${endpointId}/implementation/current`, session, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listRouteDeployments(endpointId: number, session: AdminSession): Promise<RouteDeployment[]> {
+  return request<RouteDeployment[]>(`/api/admin/endpoints/${endpointId}/deployments`, session);
+}
+
+export function publishRouteImplementation(
+  endpointId: number,
+  payload: RouteDeploymentPublishPayload,
+  session: AdminSession,
+): Promise<RouteDeployment> {
+  return request<RouteDeployment>(`/api/admin/endpoints/${endpointId}/deployments/publish`, session, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listConnections(session: AdminSession): Promise<Connection[]> {
+  return request<Connection[]>("/api/admin/connections", session);
+}
+
+export function createConnection(payload: ConnectionPayload, session: AdminSession): Promise<Connection> {
+  return request<Connection>("/api/admin/connections", session, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listExecutions(
+  session: AdminSession,
+  options: ExecutionListOptions = {},
+): Promise<ExecutionRun[]> {
+  const params = new URLSearchParams();
+  if (typeof options.endpointId === "number") {
+    params.set("endpoint_id", String(options.endpointId));
+  }
+  if (typeof options.limit === "number") {
+    params.set("limit", String(options.limit));
+  }
+
+  const query = params.toString();
+  return request<ExecutionRun[]>(`/api/admin/executions${query ? `?${query}` : ""}`, session);
+}
+
+export function getExecution(runId: number, session: AdminSession): Promise<ExecutionRunDetail> {
+  return request<ExecutionRunDetail>(`/api/admin/executions/${runId}`, session);
 }
 
 export function previewResponse(

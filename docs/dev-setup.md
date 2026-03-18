@@ -33,7 +33,7 @@ If you want to run the checked-out repo in a production-like local mode instead 
 make up-prod-local
 ```
 
-That command uses [docker-compose.prod-local.yml](/home/devadmin/projects/mockingbird/docker-compose.prod-local.yml), which:
+That command uses [docker-compose.prod-local.yml](/home/devadmin/projects/urban-octo-bassoon/docker-compose.prod-local.yml), which:
 
 - builds the Dockerfiles' `runtime` targets from your local source tree
 - starts the API through `start.prod.sh` without `uvicorn --reload`
@@ -59,6 +59,7 @@ make clean-prod-local
 - Local Compose explicitly builds the Dockerfiles' `dev` targets so the API keeps `uvicorn --reload` and the admin app keeps the Vite dev server for fast iteration.
 - The local production-like Compose file builds the `runtime` targets instead, so it is useful for smoke-testing the built/Nginx-backed stack before a real deployment.
 - API startup now runs `alembic upgrade head` before launching Uvicorn, so schema changes and legacy contract migrations are applied automatically.
+- Local Compose now defaults `POSTGRES_VOLUME_NAME` to `urban_octo_bassoon_pgdata` so this checkout does not accidentally keep using the older repo's Postgres volume.
 - The frontend keeps `node_modules` in a Docker volume so the bind-mounted source tree does not hide Vite and other installed dependencies.
 - The frontend startup script now hashes `package-lock.json` and refreshes the Dockerized dependency volume automatically when the lockfile changes, which helps keep image/runtime dependencies isolated from host `node_modules`.
 - For remote or domain-based frontend access, set `FRONTEND_ALLOWED_HOSTS` in `.env` to a comma-separated list such as `localhost,127.0.0.1,docker01.example.internal`.

@@ -84,3 +84,84 @@ class AdminSession(SQLModel, table=True):
     last_used_at: datetime = Field(default_factory=utc_now)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class ConnectionType(str, Enum):
+    http = "http"
+    postgres = "postgres"
+
+
+class RouteImplementation(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    route_id: int = Field(foreign_key="endpointdefinition.id", index=True, nullable=False)
+    version: int = Field(default=1, nullable=False)
+    is_draft: bool = Field(default=True, sa_column=Column(Boolean, nullable=False, server_default="1"))
+    flow_definition: Dict = Field(default_factory=dict, sa_column=Column(SAJSON))
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class RouteDeployment(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    route_id: int = Field(foreign_key="endpointdefinition.id", index=True, nullable=False)
+    implementation_id: int = Field(foreign_key="routeimplementation.id", index=True, nullable=False)
+    environment: str = Field(default="production", sa_column=Column(String(64), nullable=False, index=True))
+    is_active: bool = Field(default=True, sa_column=Column(Boolean, nullable=False, server_default="1"))
+    published_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class Connection(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(sa_column=Column(String(160), nullable=False, unique=True, index=True))
+    connector_type: ConnectionType = Field(
+        default=ConnectionType.http,
+        sa_column=Column(String(32), nullable=False, server_default=ConnectionType.http.value),
+    )
+    description: Optional[str] = Field(default=None, sa_column=Column(String(500), nullable=True))
+    config: Dict = Field(default_factory=dict, sa_column=Column(SAJSON))
+    is_active: bool = Field(default=True, sa_column=Column(Boolean, nullable=False, server_default="1"))
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class ExecutionRun(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    route_id: int = Field(foreign_key="endpointdefinition.id", index=True, nullable=False)
+    deployment_id: Optional[int] = Field(default=None, foreign_key="routedeployment.id", index=True)
+    implementation_id: Optional[int] = Field(default=None, foreign_key="routeimplementation.id", index=True)
+    environment: str = Field(default="production", sa_column=Column(String(64), nullable=False, server_default="production"))
+    method: str = Field(sa_column=Column(String(16), nullable=False))
+    path: str = Field(sa_column=Column(String(512), nullable=False))
+    status: str = Field(default="success", sa_column=Column(String(32), nullable=False, server_default="success"))
+    request_data: Dict = Field(default_factory=dict, sa_column=Column(SAJSON))
+    response_status_code: Optional[int] = None
+    response_body: Optional[Dict] = Field(default=None, sa_column=Column(SAJSON))
+    error_message: Optional[str] = Field(default=None, sa_column=Column(String(1000), nullable=True))
+    started_at: datetime = Field(default_factory=utc_now)
+    completed_at: Optional[datetime] = None
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
+class ExecutionStep(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int = Field(foreign_key="executionrun.id", index=True, nullable=False)
+    node_id: str = Field(sa_column=Column(String(128), nullable=False))
+    node_type: str = Field(sa_column=Column(String(64), nullable=False))
+    order_index: int = Field(default=0, nullable=False)
+    status: str = Field(default="success", sa_column=Column(String(32), nullable=False, server_default="success"))
+    input_data: Dict = Field(default_factory=dict, sa_column=Column(SAJSON))
+    output_data: Optional[Dict] = Field(default=None, sa_column=Column(SAJSON))
+    error_message: Optional[str] = Field(default=None, sa_column=Column(String(1000), nullable=True))
+    started_at: datetime = Field(default_factory=utc_now)
+    completed_at: Optional[datetime] = None
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)

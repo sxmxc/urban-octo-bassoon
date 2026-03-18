@@ -1,7 +1,7 @@
 # Domain Model
 
 ## EndpointDefinition
-Represents a managed mock API endpoint.
+Represents the route-definition layer for a managed API endpoint. This is still the public contract source of truth during the transition.
 
 Fields:
 - `id`: UUID
@@ -16,14 +16,82 @@ Fields:
 - `auth_mode`: none/basic/api_key/bearer
 - `request_schema`: JSON Schema request contract; the body schema lives at the root, while optional path/query parameter metadata lives under `x-request`
 - `response_schema`: JSON Schema for response body plus internal builder/generator extensions
-- `success_status_code`: HTTP status for successful responses
-- `error_rate`: ratio of requests that return an error
-- `latency_min_ms`, `latency_max_ms`: for simulated delay
-- `seed_key`: deterministic seed for repeatable random output
+- `success_status_code`: default successful response status
+- `error_rate`: ratio of requests that return an error in the legacy preview/mock path
+- `latency_min_ms`, `latency_max_ms`: simulated delay controls for the legacy preview/mock path
+- `seed_key`: deterministic seed for repeatable generated examples
 - `created_at`, `updated_at`: audit timestamps
 
-## Response generation
-The system now generates mock responses directly from `response_schema`.
+## RouteImplementation
+Represents a saved live implementation for a route definition.
+
+Fields:
+- `id`: integer primary key
+- `route_id`: owning `EndpointDefinition`
+- `version`: monotonically increasing implementation version
+- `is_draft`: whether this implementation is still editable
+- `flow_definition`: graph metadata for the live runtime
+- `created_at`, `updated_at`: audit timestamps
+
+Current flow contract:
+- Exactly one `api_trigger` node
+- Exactly one `set_response` node
+- Optional `error_response` node
+- Current supported node types: `api_trigger`, `validate_request`, `transform`, `if_condition`, `switch`, `http_request`, `postgres_query`, `set_response`, `error_response`
+- The live runtime is now branch-aware rather than strictly linear: `if_condition` routes to one `true` and one `false` edge, `switch` routes to one or more `case` edges plus one required `default` edge, and every reachable main-path branch must still eventually lead into `set_response` or a connected `error_response` terminal
+- Nodes may also carry editor-only layout metadata such as canvas `position`; the backend runtime ignores that UI metadata and continues to execute from node `type`, `name`, `config`, and `edges`
+
+## RouteDeployment
+Represents a published implementation bound to an environment.
+
+Fields:
+- `id`: integer primary key
+- `route_id`: owning route definition
+- `implementation_id`: published implementation version
+- `environment`: deployment environment, currently defaulting to `production`
+- `is_active`: whether this deployment is live for that environment
+- `published_at`, `created_at`, `updated_at`: deployment timestamps
+
+The runtime registry is compiled from active deployments instead of scanning raw route-definition rows on every request.
+
+## Connection
+Represents a reusable connector configuration for future live steps such as outbound HTTP or Postgres access.
+
+Fields:
+- `id`: integer primary key
+- `name`: unique admin-facing connection label
+- `connector_type`: `http` or `postgres`
+- `description`: optional operator note
+- `config`: connector configuration payload; `http` connections currently require `base_url` and may also carry shared headers/timeouts, while `postgres` connections currently require either a DSN or host/database/user credentials
+- `is_active`: whether the connection can be referenced
+- `created_at`, `updated_at`: audit timestamps
+
+## ExecutionRun
+Represents one live runtime attempt for a deployed route.
+
+Fields:
+- `id`: integer primary key
+- `route_id`, `deployment_id`, `implementation_id`: links back to the active route objects
+- `environment`: environment name
+- `method`, `path`: executed route signature
+- `status`: `success`, `validation_error`, or `error`
+- `request_data`: redaction-safe request metadata captured for the run
+- `response_status_code`, `response_body`, `error_message`: execution result metadata
+- `started_at`, `completed_at`: run timestamps
+
+## ExecutionStep
+Represents a per-node trace record for one `ExecutionRun`.
+
+Fields:
+- `id`: integer primary key
+- `run_id`: parent execution run
+- `node_id`, `node_type`, `order_index`: flow node identity and ordering
+- `status`: step result status
+- `input_data`, `output_data`, `error_message`: redaction-safe execution details
+- `started_at`, `completed_at`: trace timestamps
+
+## Preview/examples generation
+The system still generates preview/example responses directly from `response_schema`.
 
 Supported internal schema extensions:
 - `x-mock.mode`: `generate`, `mocking`, or `fixed`
@@ -59,7 +127,7 @@ Mode behavior:
 - Parameter authoring is intentionally limited to flat scalar/enum fields today; nested parameter objects, arrays, and advanced serialization styles are not modeled yet.
 
 ## Catalog bundle
-The admin import/export flow uses a native Mockingbird JSON bundle for backup and environment sync.
+The admin import/export flow still uses a native Mockingbird JSON bundle for backup and environment sync.
 - Top-level bundle fields are `schema_version`, `product`, `exported_at`, and `endpoints`.
 - Each bundled endpoint stores the editable route contract, including request/response schemas and runtime simulation settings, but excludes DB-only fields such as `id`, `created_at`, and `updated_at`.
 - V1 imports match existing routes by normalized `method + path`; `slug` remains an internal field that can be de-duplicated during import.
@@ -87,7 +155,7 @@ Fields:
 
 Role behavior:
 - `viewer`: can browse the route catalog and use preview tools
-- `editor`: viewer permissions plus route/settings/schema mutations and route import
+- `editor`: viewer permissions plus route/settings/schema mutations, flow/deployment scaffolding, and route import
 - `superuser`: editor permissions plus admin-user management
 - Repeated failed sign-ins can temporarily lock an account, and the API also applies a client-IP throttle before password verification continues.
 
@@ -112,7 +180,15 @@ The OpenAPI schema is generated dynamically by mapping `EndpointDefinition` fiel
 - `summary` and `description` are used in the OpenAPI operation.
 
 ## Public reference feed
-The public `/api/reference.json` feed exposes sanitized endpoint metadata for the landing page quick reference.
+The public `/api/reference.json` feed exposes sanitized route metadata for the landing page quick reference.
 - `request_schema` and `response_schema` are stripped of internal `x-mock`, `x-builder`, and `x-request` keys before publishing.
 - `sample_response` is generated from `response_schema`.
 - `sample_request` is generated from the root request-body schema for `POST` / `PUT` / `PATCH` routes so the public examples modal can show the JSON body to send alongside the mock response.
+
+## Boundary rules
+
+These rules are part of the intended architecture and should remain true:
+- Public OpenAPI should be derived from route contracts, not from flow-node internals.
+- Live implementations should be stored in `flow_definition`, not mixed into `response_schema` or `x-mock`.
+- Preview/example generation can remain schema-driven even when deployed runtime behavior moves to the live flow engine.
+- Connectors and secrets belong to live implementations and deployments, not to public contract documents.

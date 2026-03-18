@@ -52,4 +52,4 @@ services:
 
 volumes:
   pgdata:
-    name: mockingbird_api_pgdata
+    name: ${POSTGRES_VOLUME_NAME:-urban_octo_bassoon_pgdata}

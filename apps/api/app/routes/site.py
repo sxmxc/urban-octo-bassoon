@@ -38,10 +38,10 @@ LANDING_TEMPLATE = """
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Mockingbird | Public Mock API</title>
+    <title>Mockingbird | Public API Surface</title>
     <meta
       name="description"
-      content="Mockingbird is a public mock API with a live endpoint catalog and realtime OpenAPI."
+      content="Mockingbird is a route-first API platform with a live route catalog and realtime OpenAPI."
     />
     <link rel="icon" type="image/svg+xml" href="/static/mockingbird-icon.svg" />
     <link
@@ -1189,7 +1189,7 @@ LANDING_TEMPLATE = """
                 <span class="brand-mark"><img src="/static/mockingbird-icon.svg" alt="Mockingbird logo" /></span>
                 <span>
                   <span class="brand-title">Mockingbird</span>
-                  <span class="brand-kicker">Public mock API</span>
+                  <span class="brand-kicker">Public API surface</span>
                 </span>
               </a>
 
@@ -2032,7 +2032,7 @@ def _build_hero_media() -> str:
         top_asset,
         bottom_asset,
         "Mockingbird hero artwork",
-        "Public mock API",
+        "Public API surface",
         legacy_split=legacy_split,
     )
 

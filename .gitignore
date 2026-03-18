@@ -8,12 +8,19 @@ __pycache__/
 venv/
 .env
 python.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # Node
 node_modules/
 dist/
 .vite/
 .cache/
+coverage/
+*.tsbuildinfo
 
 # Logs
 *.log
@@ -26,6 +33,10 @@ yarn-error.log*
 
 # Docker
 docker-compose.override.yml
+
+# Local build artifacts
+.codex-build/
+.codex-build-*/
 
 # OS
 .DS_Store

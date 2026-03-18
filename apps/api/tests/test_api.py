@@ -21,11 +21,13 @@ os.environ.setdefault("ADMIN_BOOTSTRAP_USERNAME", "admin")
 os.environ.setdefault("ADMIN_BOOTSTRAP_PASSWORD", INITIAL_ADMIN_PASSWORD)
 
 import pytest
+import httpx
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 import app.db as db_module
 import app.services.admin_auth as admin_auth_module
+import app.services.route_runtime as route_runtime_module
 from app.db import create_db_and_tables, engine
 from app.main import app
 from app.models import EndpointDefinition
@@ -137,6 +139,12 @@ def empty_db():
 def test_create_db_and_tables_uses_alembic_schema():
     _reset_db()
     inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    assert "routeimplementation" in tables
+    assert "routedeployment" in tables
+    assert "connection" in tables
+    assert "executionrun" in tables
+    assert "executionstep" in tables
     columns = {column["name"] for column in inspector.get_columns("endpointdefinition")}
     assert "response_schema" in columns
     assert "seed_key" in columns
@@ -150,6 +158,941 @@ def test_create_db_and_tables_uses_alembic_schema():
     assert "failed_login_attempts" in admin_columns
     assert "last_failed_login_at" in admin_columns
     assert "locked_until" in admin_columns
+
+
+def test_route_runtime_scaffolding_endpoints_publish_and_record_executions(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    create_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="Live route", path="/api/live-route"),
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    endpoint = create_response.json()
+
+    implementation_response = client.get(
+        f"/api/admin/endpoints/{endpoint['id']}/implementation/current",
+        headers=headers,
+    )
+    assert implementation_response.status_code == 200
+    assert implementation_response.json()["version"] == 1
+    assert any(node["type"] == "api_trigger" for node in implementation_response.json()["flow_definition"]["nodes"])
+
+    update_implementation_response = client.put(
+        f"/api/admin/endpoints/{endpoint['id']}/implementation/current",
+        json={
+            "flow_definition": {
+                "schema_version": 1,
+                "nodes": [
+                    {"id": "trigger", "type": "api_trigger", "config": {}},
+                    {
+                        "id": "transform",
+                        "type": "transform",
+                        "config": {
+                            "output": {
+                                "message": "live-route-response",
+                                "method": {"$ref": "route.method"},
+                            }
+                        },
+                    },
+                    {
+                        "id": "response",
+                        "type": "set_response",
+                        "config": {
+                            "status_code": 201,
+                            "body": {"$ref": "state.transform"},
+                        },
+                    },
+                    {
+                        "id": "error",
+                        "type": "error_response",
+                        "config": {
+                            "status_code": 400,
+                            "body": {"error": "validation failed"},
+                        },
+                    },
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "transform"},
+                    {"source": "transform", "target": "response"},
+                ],
+            }
+        },
+        headers=headers,
+    )
+    assert update_implementation_response.status_code == 200
+    assert update_implementation_response.json()["is_draft"] is True
+
+    publish_response = client.post(
+        f"/api/admin/endpoints/{endpoint['id']}/deployments/publish",
+        json={"environment": "production"},
+        headers=headers,
+    )
+    assert publish_response.status_code == 201
+    deployment = publish_response.json()
+    assert deployment["environment"] == "production"
+    assert deployment["is_active"] is True
+
+    deployments_response = client.get(
+        f"/api/admin/endpoints/{endpoint['id']}/deployments",
+        headers=headers,
+    )
+    assert deployments_response.status_code == 200
+    assert deployments_response.json()[0]["implementation_id"] == deployment["implementation_id"]
+
+    live_response = client.get("/api/live-route")
+    assert live_response.status_code == 201
+    assert live_response.json() == {
+        "message": "live-route-response",
+        "method": "GET",
+    }
+
+    executions_response = client.get(
+        f"/api/admin/executions?endpoint_id={endpoint['id']}&limit=5",
+        headers=headers,
+    )
+    assert executions_response.status_code == 200
+    executions = executions_response.json()
+    assert len(executions) == 1
+    assert executions[0]["status"] == "success"
+    assert executions[0]["response_status_code"] == 201
+
+    execution_detail_response = client.get(
+        f"/api/admin/executions/{executions[0]['id']}",
+        headers=headers,
+    )
+    assert execution_detail_response.status_code == 200
+    execution_detail = execution_detail_response.json()
+    assert [step["node_type"] for step in execution_detail["steps"]] == [
+        "api_trigger",
+        "transform",
+        "set_response",
+    ]
+
+
+def test_runtime_connections_can_be_created_and_listed(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    create_response = client.post(
+        "/api/admin/connections",
+        json={
+            "name": "Primary upstream",
+            "connector_type": "http",
+            "description": "Primary live API target",
+            "config": {"base_url": "https://api.example.com"},
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    assert create_response.json()["name"] == "Primary upstream"
+
+    duplicate_response = client.post(
+        "/api/admin/connections",
+        json={
+            "name": "Primary upstream",
+            "connector_type": "http",
+            "description": None,
+            "config": {},
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert duplicate_response.status_code == 409
+
+    list_response = client.get("/api/admin/connections", headers=headers)
+    assert list_response.status_code == 200
+    assert list_response.json() == [
+        {
+            "id": 1,
+            "name": "Primary upstream",
+            "connector_type": "http",
+            "description": "Primary live API target",
+            "config": {"base_url": "https://api.example.com"},
+            "is_active": True,
+            "created_at": list_response.json()[0]["created_at"],
+            "updated_at": list_response.json()[0]["updated_at"],
+        }
+    ]
+
+
+def test_route_runtime_rejects_invalid_connector_node_config(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    create_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="Invalid connector route", path="/api/invalid-connector"),
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    endpoint = create_response.json()
+
+    update_response = client.put(
+        f"/api/admin/endpoints/{endpoint['id']}/implementation/current",
+        json={
+            "flow_definition": {
+                "schema_version": 1,
+                "nodes": [
+                    {"id": "trigger", "type": "api_trigger", "config": {}},
+                    {
+                        "id": "http",
+                        "type": "http_request",
+                        "config": {
+                            "method": "GET",
+                            "path": "/status",
+                        },
+                    },
+                    {
+                        "id": "response",
+                        "type": "set_response",
+                        "config": {
+                            "status_code": 200,
+                            "body": {"ok": True},
+                        },
+                    },
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "http"},
+                    {"source": "http", "target": "response"},
+                ],
+            }
+        },
+        headers=headers,
+    )
+    assert update_response.status_code == 400
+    assert "connection_id" in update_response.json()["detail"]
+
+
+def test_route_runtime_rejects_invalid_if_branch_metadata(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    create_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="Invalid if route", path="/api/invalid-if"),
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    endpoint = create_response.json()
+
+    update_response = client.put(
+        f"/api/admin/endpoints/{endpoint['id']}/implementation/current",
+        json={
+            "flow_definition": {
+                "schema_version": 1,
+                "nodes": [
+                    {"id": "trigger", "type": "api_trigger", "config": {}},
+                    {
+                        "id": "if-1",
+                        "type": "if_condition",
+                        "config": {
+                            "left": {"$ref": "request.query.mode"},
+                            "operator": "equals",
+                            "right": "live",
+                        },
+                    },
+                    {"id": "live", "type": "transform", "config": {"output": {"branch": "live"}}},
+                    {"id": "fallback", "type": "transform", "config": {"output": {"branch": "fallback"}}},
+                    {"id": "response", "type": "set_response", "config": {"status_code": 200, "body": {"ok": True}}},
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "if-1"},
+                    {"source": "if-1", "target": "live", "branch": "true"},
+                    {"source": "if-1", "target": "fallback", "branch": "true"},
+                    {"source": "live", "target": "response"},
+                    {"source": "fallback", "target": "response"},
+                ],
+            }
+        },
+        headers=headers,
+    )
+    assert update_response.status_code == 400
+    assert "true" in update_response.json()["detail"].lower()
+    assert "false" in update_response.json()["detail"].lower()
+
+
+def test_runtime_if_condition_branches_and_records_steps(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    create_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="If route", path="/api/if-route"),
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    endpoint = create_response.json()
+
+    update_implementation_response = client.put(
+        f"/api/admin/endpoints/{endpoint['id']}/implementation/current",
+        json={
+            "flow_definition": {
+                "schema_version": 1,
+                "nodes": [
+                    {"id": "trigger", "type": "api_trigger", "config": {}},
+                    {
+                        "id": "if-1",
+                        "type": "if_condition",
+                        "config": {
+                            "left": {"$ref": "request.query.mode"},
+                            "operator": "equals",
+                            "right": "live",
+                        },
+                    },
+                    {"id": "live", "type": "transform", "config": {"output": {"branch_name": "live"}}},
+                    {"id": "fallback", "type": "transform", "config": {"output": {"branch_name": "fallback"}}},
+                    {
+                        "id": "response",
+                        "type": "set_response",
+                        "config": {
+                            "status_code": 200,
+                            "body": {
+                                "matched": {"$ref": "state.if-1.matched"},
+                                "branch": {"$ref": "state.if-1.branch"},
+                            },
+                        },
+                    },
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "if-1"},
+                    {"source": "if-1", "target": "live", "branch": "true"},
+                    {"source": "if-1", "target": "fallback", "branch": "false"},
+                    {"source": "live", "target": "response"},
+                    {"source": "fallback", "target": "response"},
+                ],
+            }
+        },
+        headers=headers,
+    )
+    assert update_implementation_response.status_code == 200
+
+    publish_response = client.post(
+        f"/api/admin/endpoints/{endpoint['id']}/deployments/publish",
+        json={"environment": "production"},
+        headers=headers,
+    )
+    assert publish_response.status_code == 201
+
+    live_response = client.get("/api/if-route?mode=live")
+    assert live_response.status_code == 200
+    assert live_response.json() == {
+        "matched": True,
+        "branch": "true",
+    }
+
+    fallback_response = client.get("/api/if-route")
+    assert fallback_response.status_code == 200
+    assert fallback_response.json() == {
+        "matched": False,
+        "branch": "false",
+    }
+
+    executions_response = client.get(
+        f"/api/admin/executions?endpoint_id={endpoint['id']}&limit=5",
+        headers=headers,
+    )
+    assert executions_response.status_code == 200
+    execution_id = executions_response.json()[0]["id"]
+
+    execution_detail_response = client.get(
+        f"/api/admin/executions/{execution_id}",
+        headers=headers,
+    )
+    assert execution_detail_response.status_code == 200
+    execution_detail = execution_detail_response.json()
+    assert [step["node_type"] for step in execution_detail["steps"]] == [
+        "api_trigger",
+        "if_condition",
+        "transform",
+        "set_response",
+    ]
+    assert execution_detail["steps"][1]["output_data"]["branch"] == "false"
+    assert execution_detail["steps"][2]["node_id"] == "fallback"
+
+
+def test_runtime_can_branch_directly_to_error_response(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    create_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="Error branch route", path="/api/error-branch-route"),
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    endpoint = create_response.json()
+
+    update_implementation_response = client.put(
+        f"/api/admin/endpoints/{endpoint['id']}/implementation/current",
+        json={
+            "flow_definition": {
+                "schema_version": 1,
+                "nodes": [
+                    {"id": "trigger", "type": "api_trigger", "config": {}},
+                    {
+                        "id": "if-1",
+                        "type": "if_condition",
+                        "config": {
+                            "left": {"$ref": "request.query.mode"},
+                            "operator": "equals",
+                            "right": "live",
+                        },
+                    },
+                    {
+                        "id": "response",
+                        "type": "set_response",
+                        "config": {
+                            "status_code": 200,
+                            "body": {"ok": True},
+                        },
+                    },
+                    {
+                        "id": "error",
+                        "type": "error_response",
+                        "config": {
+                            "status_code": 409,
+                            "body": {
+                                "error": "branch blocked",
+                                "branch": {"$ref": "state.if-1.branch"},
+                            },
+                        },
+                    },
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "if-1"},
+                    {"source": "if-1", "target": "response", "branch": "true"},
+                    {"source": "if-1", "target": "error", "branch": "false"},
+                ],
+            }
+        },
+        headers=headers,
+    )
+    assert update_implementation_response.status_code == 200
+
+    publish_response = client.post(
+        f"/api/admin/endpoints/{endpoint['id']}/deployments/publish",
+        json={"environment": "production"},
+        headers=headers,
+    )
+    assert publish_response.status_code == 201
+
+    live_response = client.get("/api/error-branch-route?mode=live")
+    assert live_response.status_code == 200
+    assert live_response.json() == {"ok": True}
+
+    error_response = client.get("/api/error-branch-route")
+    assert error_response.status_code == 409
+    assert error_response.json() == {
+        "error": "branch blocked",
+        "branch": "false",
+    }
+
+    executions_response = client.get(
+        f"/api/admin/executions?endpoint_id={endpoint['id']}&limit=5",
+        headers=headers,
+    )
+    assert executions_response.status_code == 200
+    execution_id = executions_response.json()[0]["id"]
+
+    execution_detail_response = client.get(
+        f"/api/admin/executions/{execution_id}",
+        headers=headers,
+    )
+    assert execution_detail_response.status_code == 200
+    execution_detail = execution_detail_response.json()
+    assert [step["node_type"] for step in execution_detail["steps"]] == [
+        "api_trigger",
+        "if_condition",
+        "error_response",
+    ]
+    assert execution_detail["steps"][2]["output_data"]["status_code"] == 409
+
+
+def test_runtime_switch_routes_to_case_and_default(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    create_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="Switch route", path="/api/switch-route"),
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    endpoint = create_response.json()
+
+    update_implementation_response = client.put(
+        f"/api/admin/endpoints/{endpoint['id']}/implementation/current",
+        json={
+            "flow_definition": {
+                "schema_version": 1,
+                "nodes": [
+                    {"id": "trigger", "type": "api_trigger", "config": {}},
+                    {"id": "switch-1", "type": "switch", "config": {"value": {"$ref": "request.query.status"}}},
+                    {"id": "queued", "type": "transform", "config": {"output": {"branch_name": "queued"}}},
+                    {"id": "default-path", "type": "transform", "config": {"output": {"branch_name": "default"}}},
+                    {
+                        "id": "response",
+                        "type": "set_response",
+                        "config": {
+                            "status_code": 200,
+                            "body": {
+                                "branch": {"$ref": "state.switch-1.branch"},
+                                "case_value": {"$ref": "state.switch-1.case_value"},
+                            },
+                        },
+                    },
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "switch-1"},
+                    {"source": "switch-1", "target": "queued", "branch": "case", "case_value": "queued"},
+                    {"source": "switch-1", "target": "default-path", "branch": "default"},
+                    {"source": "queued", "target": "response"},
+                    {"source": "default-path", "target": "response"},
+                ],
+            }
+        },
+        headers=headers,
+    )
+    assert update_implementation_response.status_code == 200
+
+    publish_response = client.post(
+        f"/api/admin/endpoints/{endpoint['id']}/deployments/publish",
+        json={"environment": "production"},
+        headers=headers,
+    )
+    assert publish_response.status_code == 201
+
+    case_response = client.get("/api/switch-route?status=queued")
+    assert case_response.status_code == 200
+    assert case_response.json() == {
+        "branch": "case",
+        "case_value": "queued",
+    }
+
+    default_response = client.get("/api/switch-route?status=missing")
+    assert default_response.status_code == 200
+    assert default_response.json() == {
+        "branch": "default",
+        "case_value": None,
+    }
+
+    executions_response = client.get(
+        f"/api/admin/executions?endpoint_id={endpoint['id']}&limit=5",
+        headers=headers,
+    )
+    assert executions_response.status_code == 200
+    execution_id = executions_response.json()[0]["id"]
+
+    execution_detail_response = client.get(
+        f"/api/admin/executions/{execution_id}",
+        headers=headers,
+    )
+    assert execution_detail_response.status_code == 200
+    execution_detail = execution_detail_response.json()
+    assert [step["node_type"] for step in execution_detail["steps"]] == [
+        "api_trigger",
+        "switch",
+        "transform",
+        "set_response",
+    ]
+    assert execution_detail["steps"][1]["output_data"]["branch"] == "default"
+    assert execution_detail["steps"][2]["node_id"] == "default-path"
+
+
+def test_runtime_http_request_connector_executes_and_records_steps(empty_db, monkeypatch):
+    client = TestClient(app)
+    headers = _login_headers(client)
+    called: dict[str, object] = {}
+
+    def fake_http_request(*, method, url, headers, query, body, timeout_ms):
+        called["method"] = method
+        called["url"] = url
+        called["headers"] = dict(headers)
+        called["query"] = dict(query)
+        called["body"] = body
+        called["timeout_ms"] = timeout_ms
+        return {
+            "status_code": 202,
+            "headers": {
+                "content-type": "application/json",
+                "x-upstream": "mocked",
+            },
+            "content_type": "application/json",
+            "body": {
+                "device_id": "device-1",
+                "include": query.get("include"),
+            },
+        }
+
+    monkeypatch.setattr(route_runtime_module, "_perform_http_request", fake_http_request)
+
+    create_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="HTTP connector route", path="/api/http-proxy/{deviceId}"),
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    endpoint = create_response.json()
+
+    connection_response = client.post(
+        "/api/admin/connections",
+        json={
+            "name": "HTTP upstream",
+            "connector_type": "http",
+            "description": "Shared upstream",
+            "config": {
+                "base_url": "https://api.example.com",
+                "headers": {"x-api-key": "shared-secret"},
+                "timeout_ms": 2400,
+            },
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert connection_response.status_code == 201
+    connection = connection_response.json()
+
+    update_implementation_response = client.put(
+        f"/api/admin/endpoints/{endpoint['id']}/implementation/current",
+        json={
+            "flow_definition": {
+                "schema_version": 1,
+                "nodes": [
+                    {"id": "trigger", "type": "api_trigger", "config": {}},
+                    {
+                        "id": "http-upstream",
+                        "type": "http_request",
+                        "config": {
+                            "connection_id": connection["id"],
+                            "method": "GET",
+                            "path": "/devices/{{request.path.deviceId}}",
+                            "query": {
+                                "include": {"$ref": "request.query.include"},
+                            },
+                            "headers": {
+                                "x-route-path": "{{route.path}}",
+                            },
+                            "timeout_ms": 1500,
+                        },
+                    },
+                    {
+                        "id": "response",
+                        "type": "set_response",
+                        "config": {
+                            "status_code": {"$ref": "state.http-upstream.response.status_code"},
+                            "body": {
+                                "upstream": {"$ref": "state.http-upstream.response.body"},
+                                "request_url": {"$ref": "state.http-upstream.request.url"},
+                            },
+                        },
+                    },
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "http-upstream"},
+                    {"source": "http-upstream", "target": "response"},
+                ],
+            }
+        },
+        headers=headers,
+    )
+    assert update_implementation_response.status_code == 200
+
+    publish_response = client.post(
+        f"/api/admin/endpoints/{endpoint['id']}/deployments/publish",
+        json={"environment": "production"},
+        headers=headers,
+    )
+    assert publish_response.status_code == 201
+
+    live_response = client.get("/api/http-proxy/device-1?include=specs")
+    assert live_response.status_code == 202
+    assert live_response.json() == {
+        "upstream": {
+            "device_id": "device-1",
+            "include": "specs",
+        },
+        "request_url": "https://api.example.com/devices/device-1",
+    }
+
+    assert called == {
+        "method": "GET",
+        "url": "https://api.example.com/devices/device-1",
+        "headers": {
+            "x-api-key": "shared-secret",
+            "x-route-path": "/api/http-proxy/{deviceId}",
+        },
+        "query": {"include": "specs"},
+        "body": None,
+        "timeout_ms": 1500,
+    }
+
+    executions_response = client.get(
+        f"/api/admin/executions?endpoint_id={endpoint['id']}&limit=5",
+        headers=headers,
+    )
+    assert executions_response.status_code == 200
+    execution_id = executions_response.json()[0]["id"]
+
+    execution_detail_response = client.get(
+        f"/api/admin/executions/{execution_id}",
+        headers=headers,
+    )
+    assert execution_detail_response.status_code == 200
+    execution_detail = execution_detail_response.json()
+    assert [step["node_type"] for step in execution_detail["steps"]] == [
+        "api_trigger",
+        "http_request",
+        "set_response",
+    ]
+    http_step = execution_detail["steps"][1]
+    assert http_step["output_data"]["connection"]["id"] == connection["id"]
+    assert http_step["output_data"]["response"]["status_code"] == 202
+    assert http_step["output_data"]["response"]["body"] == {
+        "device_id": "device-1",
+        "include": "specs",
+    }
+
+
+def test_runtime_postgres_query_connector_executes_and_records_steps(empty_db, monkeypatch):
+    client = TestClient(app)
+    headers = _login_headers(client)
+    called: dict[str, object] = {}
+
+    def fake_postgres_query(*, connection_config, sql, parameters):
+        called["connection_config"] = dict(connection_config)
+        called["sql"] = sql
+        called["parameters"] = dict(parameters)
+        return [
+            {
+                "order_id": parameters["order_id"],
+                "status": "shipped",
+            }
+        ]
+
+    monkeypatch.setattr(route_runtime_module, "_perform_postgres_query", fake_postgres_query)
+
+    create_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="Postgres connector route", path="/api/orders/{orderId}"),
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    endpoint = create_response.json()
+
+    connection_response = client.post(
+        "/api/admin/connections",
+        json={
+            "name": "Orders database",
+            "connector_type": "postgres",
+            "description": "Read-only reporting replica",
+            "config": {
+                "dsn": "postgresql://readonly:secret@db.internal:5432/mockingbird",
+            },
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert connection_response.status_code == 201
+    connection = connection_response.json()
+
+    update_implementation_response = client.put(
+        f"/api/admin/endpoints/{endpoint['id']}/implementation/current",
+        json={
+            "flow_definition": {
+                "schema_version": 1,
+                "nodes": [
+                    {"id": "trigger", "type": "api_trigger", "config": {}},
+                    {
+                        "id": "orders-query",
+                        "type": "postgres_query",
+                        "config": {
+                            "connection_id": connection["id"],
+                            "sql": "select order_id, status from orders where order_id = %(order_id)s",
+                            "parameters": {
+                                "order_id": {"$ref": "request.path.orderId"},
+                            },
+                        },
+                    },
+                    {
+                        "id": "response",
+                        "type": "set_response",
+                        "config": {
+                            "status_code": 200,
+                            "body": {
+                                "count": {"$ref": "state.orders-query.row_count"},
+                                "rows": {"$ref": "state.orders-query.rows"},
+                            },
+                        },
+                    },
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "orders-query"},
+                    {"source": "orders-query", "target": "response"},
+                ],
+            }
+        },
+        headers=headers,
+    )
+    assert update_implementation_response.status_code == 200
+
+    publish_response = client.post(
+        f"/api/admin/endpoints/{endpoint['id']}/deployments/publish",
+        json={"environment": "production"},
+        headers=headers,
+    )
+    assert publish_response.status_code == 201
+
+    live_response = client.get("/api/orders/ord_123")
+    assert live_response.status_code == 200
+    assert live_response.json() == {
+        "count": 1,
+        "rows": [
+            {
+                "order_id": "ord_123",
+                "status": "shipped",
+            }
+        ],
+    }
+
+    assert called == {
+        "connection_config": {
+            "dsn": "postgresql://readonly:secret@db.internal:5432/mockingbird",
+        },
+        "sql": "select order_id, status from orders where order_id = %(order_id)s",
+        "parameters": {"order_id": "ord_123"},
+    }
+
+    executions_response = client.get(
+        f"/api/admin/executions?endpoint_id={endpoint['id']}&limit=5",
+        headers=headers,
+    )
+    assert executions_response.status_code == 200
+    execution_id = executions_response.json()[0]["id"]
+
+    execution_detail_response = client.get(
+        f"/api/admin/executions/{execution_id}",
+        headers=headers,
+    )
+    assert execution_detail_response.status_code == 200
+    execution_detail = execution_detail_response.json()
+    assert [step["node_type"] for step in execution_detail["steps"]] == [
+        "api_trigger",
+        "postgres_query",
+        "set_response",
+    ]
+    query_step = execution_detail["steps"][1]
+    assert query_step["output_data"]["connection"]["id"] == connection["id"]
+    assert query_step["output_data"]["row_count"] == 1
+    assert query_step["output_data"]["rows"] == [
+        {
+            "order_id": "ord_123",
+            "status": "shipped",
+        }
+    ]
+
+
+def test_runtime_http_request_connector_failures_return_error_runs(empty_db, monkeypatch):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    def fake_http_request(*, method, url, headers, query, body, timeout_ms):
+        raise httpx.ReadTimeout("upstream timed out")
+
+    monkeypatch.setattr(route_runtime_module, "_perform_http_request", fake_http_request)
+
+    create_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="HTTP failure route", path="/api/http-failure"),
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    endpoint = create_response.json()
+
+    connection_response = client.post(
+        "/api/admin/connections",
+        json={
+            "name": "Failing upstream",
+            "connector_type": "http",
+            "description": None,
+            "config": {"base_url": "https://api.example.com"},
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert connection_response.status_code == 201
+    connection = connection_response.json()
+
+    update_implementation_response = client.put(
+        f"/api/admin/endpoints/{endpoint['id']}/implementation/current",
+        json={
+            "flow_definition": {
+                "schema_version": 1,
+                "nodes": [
+                    {"id": "trigger", "type": "api_trigger", "config": {}},
+                    {
+                        "id": "http",
+                        "type": "http_request",
+                        "config": {
+                            "connection_id": connection["id"],
+                            "method": "GET",
+                            "path": "/status",
+                        },
+                    },
+                    {
+                        "id": "response",
+                        "type": "set_response",
+                        "config": {
+                            "status_code": 200,
+                            "body": {"ok": True},
+                        },
+                    },
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "http"},
+                    {"source": "http", "target": "response"},
+                ],
+            }
+        },
+        headers=headers,
+    )
+    assert update_implementation_response.status_code == 200
+
+    publish_response = client.post(
+        f"/api/admin/endpoints/{endpoint['id']}/deployments/publish",
+        json={"environment": "production"},
+        headers=headers,
+    )
+    assert publish_response.status_code == 201
+
+    live_response = client.get("/api/http-failure")
+    assert live_response.status_code == 502
+    assert live_response.json() == {
+        "error": "HTTP Request step failed to reach the upstream service.",
+        "details": "upstream timed out",
+    }
+
+    executions_response = client.get(
+        f"/api/admin/executions?endpoint_id={endpoint['id']}&limit=5",
+        headers=headers,
+    )
+    assert executions_response.status_code == 200
+    execution = executions_response.json()[0]
+    assert execution["status"] == "error"
+    assert execution["response_status_code"] == 502
+
+    execution_detail_response = client.get(
+        f"/api/admin/executions/{execution['id']}",
+        headers=headers,
+    )
+    assert execution_detail_response.status_code == 200
+    error_step = execution_detail_response.json()["steps"][1]
+    assert error_step["node_type"] == "http_request"
+    assert error_step["status"] == "error"
+    assert error_step["error_message"] == "upstream timed out"
 
 
 def test_openapi_endpoint(seeded_db):

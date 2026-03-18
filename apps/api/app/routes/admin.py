@@ -25,6 +25,8 @@ from app.schemas import (
     AdminUserRead,
     AdminUserUpdate,
     ChangePasswordRequest,
+    ConnectionCreate,
+    ConnectionRead,
     EndpointCreate,
     EndpointBundle,
     EndpointImportMode,
@@ -34,8 +36,14 @@ from app.schemas import (
     EndpointImportSummary,
     EndpointRead,
     EndpointUpdate,
+    ExecutionRunDetail,
+    ExecutionRunRead,
     PreviewRequest,
     PreviewResponse,
+    RouteDeploymentPublishRequest,
+    RouteDeploymentRead,
+    RouteImplementationRead,
+    RouteImplementationUpsert,
 )
 from app.services.admin_auth import (
     AdminContext,
@@ -67,6 +75,17 @@ from app.services.admin_endpoint_policy import (
     validate_endpoint_path,
 )
 from app.services.mock_generation import preview_from_schema
+from app.services.route_runtime import (
+    create_connection,
+    get_execution_run_detail,
+    get_route_implementation_read,
+    invalidate_deployment_registry,
+    list_connections,
+    list_execution_run_reads,
+    list_route_deployments,
+    publish_route_implementation,
+    upsert_route_implementation,
+)
 from app.services.schema_contract import (
     normalize_request_schema_contract,
     normalize_schema_for_builder,
@@ -746,6 +765,7 @@ def import_endpoints_bundle(
 
     if not payload.dry_run and not has_errors:
         _apply_endpoint_import_plan(session, actions)
+        invalidate_deployment_registry()
         applied = True
 
     return EndpointImportResponse(
@@ -793,7 +813,9 @@ def create_new_endpoint(
         requested_slug=normalized_fields.get("slug"),
     )
     payload = EndpointCreate(**normalized_fields)
-    return create_endpoint(session, payload)
+    endpoint = create_endpoint(session, payload)
+    invalidate_deployment_registry()
+    return endpoint
 
 
 @router.put("/endpoints/{endpoint_id}", response_model=EndpointRead)
@@ -822,7 +844,9 @@ def update_existing_endpoint(
             requested_slug=updates.get("slug"),
             exclude_endpoint_id=endpoint.id,
         )
-    return update_endpoint(session, endpoint, EndpointUpdate(**updates))
+    updated_endpoint = update_endpoint(session, endpoint, EndpointUpdate(**updates))
+    invalidate_deployment_registry()
+    return updated_endpoint
 
 
 @router.delete("/endpoints/{endpoint_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -835,7 +859,106 @@ def delete_existing_endpoint(
     if not endpoint:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Endpoint not found")
     delete_endpoint(session, endpoint)
+    invalidate_deployment_registry()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/endpoints/{endpoint_id}/implementation/current", response_model=RouteImplementationRead)
+def read_current_route_implementation(
+    endpoint_id: int,
+    session: Session = Depends(get_session),
+    _: AdminContext = Depends(require_route_read_access),
+) -> RouteImplementationRead:
+    endpoint = get_endpoint(session, endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Endpoint not found")
+    return get_route_implementation_read(session, endpoint)
+
+
+@router.put("/endpoints/{endpoint_id}/implementation/current", response_model=RouteImplementationRead)
+def save_current_route_implementation(
+    endpoint_id: int,
+    payload: RouteImplementationUpsert,
+    session: Session = Depends(get_session),
+    _: AdminContext = Depends(require_route_write_access),
+) -> RouteImplementationRead:
+    endpoint = get_endpoint(session, endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Endpoint not found")
+    try:
+        implementation = upsert_route_implementation(session, endpoint, payload)
+    except ValueError as error:
+        _raise_user_input_error(error)
+    return RouteImplementationRead.model_validate(implementation)
+
+
+@router.get("/endpoints/{endpoint_id}/deployments", response_model=list[RouteDeploymentRead])
+def read_route_deployments(
+    endpoint_id: int,
+    session: Session = Depends(get_session),
+    _: AdminContext = Depends(require_route_read_access),
+) -> list[RouteDeploymentRead]:
+    endpoint = get_endpoint(session, endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Endpoint not found")
+    return [RouteDeploymentRead.model_validate(deployment) for deployment in list_route_deployments(session, endpoint_id)]
+
+
+@router.post("/endpoints/{endpoint_id}/deployments/publish", response_model=RouteDeploymentRead, status_code=status.HTTP_201_CREATED)
+def publish_current_route_implementation(
+    endpoint_id: int,
+    payload: RouteDeploymentPublishRequest,
+    session: Session = Depends(get_session),
+    _: AdminContext = Depends(require_route_write_access),
+) -> RouteDeploymentRead:
+    endpoint = get_endpoint(session, endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Endpoint not found")
+    deployment = publish_route_implementation(session, endpoint, environment=payload.environment)
+    return RouteDeploymentRead.model_validate(deployment)
+
+
+@router.get("/connections", response_model=list[ConnectionRead])
+def list_runtime_connections(
+    session: Session = Depends(get_session),
+    _: AdminContext = Depends(require_route_read_access),
+) -> list[ConnectionRead]:
+    return [ConnectionRead.model_validate(connection) for connection in list_connections(session)]
+
+
+@router.post("/connections", response_model=ConnectionRead, status_code=status.HTTP_201_CREATED)
+def create_runtime_connection(
+    payload: ConnectionCreate,
+    session: Session = Depends(get_session),
+    _: AdminContext = Depends(require_route_write_access),
+) -> ConnectionRead:
+    try:
+        connection = create_connection(session, payload)
+    except ValueError as error:
+        _raise_user_input_error(error)
+    return ConnectionRead.model_validate(connection)
+
+
+@router.get("/executions", response_model=list[ExecutionRunRead])
+def list_route_executions(
+    endpoint_id: int | None = None,
+    limit: int = 50,
+    session: Session = Depends(get_session),
+    _: AdminContext = Depends(require_route_read_access),
+) -> list[ExecutionRunRead]:
+    return list_execution_run_reads(session, route_id=endpoint_id, limit=max(1, min(limit, 200)))
+
+
+@router.get("/executions/{run_id}", response_model=ExecutionRunDetail)
+def read_route_execution(
+    run_id: int,
+    session: Session = Depends(get_session),
+    _: AdminContext = Depends(require_route_read_access),
+) -> ExecutionRunDetail:
+    run = get_execution_run_detail(session, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Execution run not found")
+    return run
 
 
 @router.post("/endpoints/preview-response", response_model=PreviewResponse)

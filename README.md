@@ -1,9 +1,21 @@
 # Mockingbird
 
-[![CI](https://github.com/sxmxc/mockingbird/actions/workflows/ci.yml/badge.svg)](https://github.com/sxmxc/mockingbird/actions/workflows/ci.yml)
-[![Container Images](https://github.com/sxmxc/mockingbird/actions/workflows/images.yml/badge.svg)](https://github.com/sxmxc/mockingbird/actions/workflows/images.yml)
+[![CI](https://github.com/sxmxc/urban-octo-bassoon/actions/workflows/ci.yml/badge.svg)](https://github.com/sxmxc/urban-octo-bassoon/actions/workflows/ci.yml)
+[![Container Images](https://github.com/sxmxc/urban-octo-bassoon/actions/workflows/images.yml/badge.svg)](https://github.com/sxmxc/urban-octo-bassoon/actions/workflows/images.yml)
 
-A Docker-first mock API platform with a live public landing page, dynamic OpenAPI, a private admin dashboard, and configurable endpoint mocking. Designed for developers who want realistic API shapes with a little personality.
+A Docker-first, route-first API platform for designing, testing, publishing, and eventually operating configurable API routes through a dedicated admin console. This fork is evolving upstream Mockingbird toward a clearer split between public contract authoring, live flow implementations, deployment history, and execution tracing.
+
+The current system already includes a live public landing page, dynamic OpenAPI, a private admin dashboard, and the first deployment-backed runtime scaffolding for published route implementations. The older schema-driven mock generator still powers previews, examples, and fallback behavior while the live runtime grows into the primary execution path.
+
+## 🧭 Fork Status
+
+This repository is a fork of the upstream Mockingbird work and is now being steered toward:
+
+- a route-first API platform instead of a mock-only editor
+- explicit `Overview`, `Contract`, `Flow`, `Test`, and `Deploy` workflows
+- deployment-backed runtime execution with publish/unpublish semantics
+- stronger operator tooling around connections, execution traces, and runtime debugging
+- richer flow-authoring ergonomics, especially around mapping, data-shape visibility, and modern drag-and-drop interactions
 
 ## 🚀 Quickstart (Local)
 
@@ -51,14 +63,17 @@ If you want to wipe the local production-like database volume too:
 make clean-prod-local
 ```
 
-## 🧠 What You Get
+## 🧠 What You Get Today
 
-- **Dynamic mock API**: endpoints defined in Postgres are served dynamically.
-- **Public landing page**: `/` and `/api` now render a full-height Mockingbird hero sourced from split top/bottom artwork frames, with a Bulma-based quick-reference table, filtering, pagination, request/response example modals for body-based routes, and a light/dark theme toggle.
-- **Live OpenAPI**: `/openapi.json` reflects the active endpoint catalog.
-- **Admin API**: bearer-session admin routes manage endpoint definitions plus dashboard accounts in Postgres.
+- **Route catalog and contracts**: routes stored in Postgres remain the source of truth for route metadata, request/response schemas, and OpenAPI publishing.
+- **Deployment-backed runtime foundation**: draft route implementations, deployments, execution traces, shared connections, and the first compiled in-memory route registry are now part of the backend foundation.
+- **Flow editor foundation**: the admin UI includes a Vue Flow-based authoring surface for live route implementations, with starter runtime nodes, branching, connector nodes, and a focused full-editor mode.
+- **Preview/examples engine**: schema-driven sample generation still powers route previews, examples, and legacy mock behavior during the transition to fully live implementations.
+- **Public landing page**: `/` and `/api` render a full-height Mockingbird hero with a Bulma-based quick-reference table, filtering, pagination, request/response example modals for body-based routes, and a light/dark theme toggle.
+- **Live OpenAPI**: `/openapi.json` reflects the active route catalog.
+- **Admin API**: bearer-session admin routes manage endpoint definitions, route implementations, deployments, connections, execution history, and dashboard accounts in Postgres.
 - **Seed catalog**: `make seed` loads 15 sample endpoints for local exploration, including device examples that now use UUID-style `deviceId` values and a curated default model enum.
-- **Admin UI**: Vue + Vuetify endpoint studio now includes a dedicated sign-in flow, protected catalog/settings routes, a separate schema editor page, light/dark theme toggle, skeleton loading states, search/filtering, drag-and-drop schema editing, and live previews of generated/public mock responses.
+- **Admin UI**: Vue + Vuetify route management now includes dedicated sign-in, protected route-first Overview/Contract/Flow/Test/Deploy surfaces, a separate schema editor page, and live previews of generated/public examples.
 - **Schema-driven generation**: response schemas can mix static values, true random generation, and mocking-style random generation per field via internal `x-mock` extensions, with semantic value types like `id`, `name`, `email`, `price`, and `long_text`.
 - **Vuetify AI support**: the frontend uses `@vuetify/v0` for theme/storage helpers and ships with a repo-level Vuetify MCP config.
 - **Docker-first**: one command to bring up the full stack without depending on host `node_modules` for the frontend container.
@@ -69,6 +84,18 @@ make clean-prod-local
 - **Frontend**: Vue + Vite + TypeScript + Vuetify
 - **DB migrations**: Alembic
 - **Orchestration**: Docker Compose
+
+## 🛣️ Direction
+
+The near-term ambition is to make the published runtime the product center of gravity:
+
+- contracts stay distinct from live implementations
+- `Deploy` becomes the real publish boundary for public/runtime surfaces
+- `Flow` becomes the place where operators define behavior, not just mock output
+- `Test` becomes explicit about preview vs live execution
+- connections, execution traces, and runtime debugging become first-class
+
+This fork is not trying to become a generic workflow builder. The core model remains API-triggered routes with contract-aware live behavior.
 
 ## 🚢 CI/CD
 
@@ -95,7 +122,8 @@ See `docs/ci-cd.md` for the release workflow, image tag rules, and runtime envir
 ## 📚 Documentation
 
 - Canonical docs live in this repo: [`README.md`](README.md) and [`docs/`](docs/)
-- The practical user/developer handbook lives in the [GitHub Wiki](https://github.com/sxmxc/mockingbird/wiki)
+- The practical user/developer handbook lives in the [GitHub Wiki](https://github.com/sxmxc/urban-octo-bassoon/wiki)
+- The implementation handoff / platform direction doc lives in [`docs/roadmap.md`](docs/roadmap.md)
 
 ## 🐳 Image-only Compose Example
 
@@ -104,10 +132,14 @@ If you want to run Mockingbird without cloning the full repo, start from:
 - `deploy/docker-compose.ghcr.yml`
 - `deploy/.env.ghcr.example`
 
-Those files point at:
+Those files default to:
 
-- `ghcr.io/sxmxc/mockingbird-api`
-- `ghcr.io/sxmxc/mockingbird-admin-web`
+- `${IMAGE_REPOSITORY}-api`
+- `${IMAGE_REPOSITORY}-admin-web`
+
+The current fork ships with:
+
+- `IMAGE_REPOSITORY=ghcr.io/sxmxc/urban-octo-bassoon`
 
 The default `IMAGE_TAG=edge` tracks the latest default-branch publish. For release deployments, prefer an explicit tag such as `IMAGE_TAG=1.2.3`.
 
@@ -119,3 +151,4 @@ If you already have the repo checked out and just want a local runtime smoke tes
 ## 🧩 Next steps
 
 Check `TASKS.md` for what to work on next.
+If you are picking up implementation work, read `docs/roadmap.md` and `docs/architecture.md` first.

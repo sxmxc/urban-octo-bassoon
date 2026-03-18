@@ -3,17 +3,28 @@ import { computed } from "vue";
 import { describeSchema } from "../utils/endpointDrafts";
 import type { EndpointDraft } from "../types/endpoints";
 
-const props = defineProps<{
-  availableCategories?: string[];
-  availableTags?: string[];
-  createdAt?: string;
-  draft: EndpointDraft;
-  endpointId?: number;
-  errors: Record<string, string>;
-  isCreating: boolean;
-  isSaving: boolean;
-  updatedAt?: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    availableCategories?: string[];
+    availableTags?: string[];
+    createdAt?: string;
+    draft: EndpointDraft;
+    endpointId?: number;
+    errors: Record<string, string>;
+    isCreating: boolean;
+    isSaving: boolean;
+    showContractCard?: boolean;
+    updatedAt?: string;
+  }>(),
+  {
+    availableCategories: () => [],
+    availableTags: () => [],
+    createdAt: undefined,
+    endpointId: undefined,
+    showContractCard: true,
+    updatedAt: undefined,
+  },
+);
 
 const emit = defineEmits<{
   change: [patch: Partial<EndpointDraft>];
@@ -82,7 +93,7 @@ function numberPatch(field: keyof EndpointDraft, value: string | number | null):
 
 <template>
   <v-form class="d-flex flex-column ga-5" @submit.prevent="emit('submit')">
-    <v-card class="workspace-card">
+    <v-card v-if="showContractCard" class="workspace-card">
       <v-card-item>
         <v-card-title>{{ isCreating ? "Create route" : draft.name || "Untitled route" }}</v-card-title>
         <v-card-subtitle>

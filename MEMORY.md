@@ -1,34 +1,47 @@
 # MEMORY
 
 ## Project Purpose
-Provide a Docker-first platform to define and serve configurable mock APIs with realistic shapes, funny output values, and a polished public-facing surface. The platform is centered around a clean private admin UI, a live public quick reference, and dynamic OpenAPI generation.
+Provide a Docker-first, route-first API platform with a polished public-facing surface, a clean private admin UI, dynamic OpenAPI generation, and an emerging live runtime for deployed route implementations. The older schema-driven mock generator remains as preview/example infrastructure while the live runtime foundation is built out.
 
 ## Current Architecture
 - **Backend**: FastAPI with SQLModel + Alembic, running in Docker
-- **Database**: Postgres for endpoint definitions and persistence
+- **Database**: Postgres for route definitions, route implementations, deployments, connections, executions, and admin persistence
 - **Frontend**: Vue + Vite + Vuetify admin dashboard with `@vuetify/v0` theme/storage helpers
 - **Orchestration**: Docker Compose (local + QA profiles)
 
 ## Constraints
 - Must be Docker-first and easy to run.
 - Must use Postgres (no SQLite).
-- Endpoint definitions are stored in DB and drive both runtime behavior and OpenAPI.
-- Keep implementation pragmatic and “good enough” for v1.
+- Route definitions are stored in DB and drive both runtime behavior and OpenAPI.
+- Keep the backend as the source of truth even as the flow/canvas authoring surface evolves.
+- Keep implementation pragmatic and staged; the live runtime is being introduced behind working legacy behavior instead of in one breaking rewrite.
 
 ## Active Assumptions
 - Admin auth now uses DB-backed dashboard users plus bearer session tokens, with a one-time bootstrap account created on first init.
 - OpenAPI can be rebuilt on every request; caching is secondary.
-- `response_schema` is now the single source of truth for response shape and mock behavior via `x-mock` extensions.
+- `request_schema` and `response_schema` remain the public contract source of truth even as live route implementations are introduced.
+- `response_schema` is still the source of truth for preview/example generation via `x-mock` extensions.
 - Phase 1 response templating is scoped as an optional `x-mock.template` overlay on response `string` nodes, layered onto the existing `x-mock` contract instead of replacing the drag-and-drop schema studio with a raw template editor.
 - Phase 1 template context is intentionally limited to `value`, `request.path`, `request.query`, and `request.body`; response-field references, loops, and a raw Handlebars/Liquid-style surface are deferred until the simpler request-aware pass lands cleanly.
 - The schema-studio roadmap is now pivoting toward a canvas-first architecture, with `Vue Flow` as the leading candidate, while keeping the existing JSON Schema-backed builder contract stable during the transition.
 - Admin access control now extends the existing dashboard-user system with explicit roles and permission bundles instead of introducing a second admin-user model.
+- The first live runtime slice is intentionally synchronous, deployment-backed, and still limited to safe typed nodes, now including `if_condition`, `switch`, `http_request`, and read-only `postgres_query` alongside `api_trigger`, `validate_request`, `transform`, `set_response`, and `error_response`.
+- The workflow surface is borrowing data-flow and mapping ergonomics from n8n, but the product remains API-trigger-first for now rather than expanding into a generic multi-trigger automation builder.
+- The live flow editor now stores the same backend `flow_definition` shape plus canvas-friendly node positions, while the backend runtime continues to ignore editor-only layout metadata.
+- The public runtime still falls back to the legacy mock path for routes that have not been promoted into the new deployment-backed runtime yet.
 
 ## Current Status Snapshot
 - Docker Compose starts a working Postgres, FastAPI API, and Vite admin app with `make up`.
-- The backend exposes session-authenticated admin routes, DB-backed dashboard-user management, forced password rotation for bootstrap/reset credentials, DB-driven runtime dispatch, live OpenAPI generation, and an authenticated response preview endpoint.
+- The backend exposes session-authenticated admin routes, DB-backed dashboard-user management, forced password rotation for bootstrap/reset credentials, deployment-backed live runtime dispatch, legacy DB-driven mock fallback, live OpenAPI generation, and an authenticated response preview endpoint.
+- The backend now persists `RouteImplementation`, `RouteDeployment`, `Connection`, `ExecutionRun`, and `ExecutionStep` records, with an Alembic migration that bootstraps those tables into existing databases.
+- The public runtime now compiles active deployments into an in-memory matcher cache and records per-request execution traces when a live implementation handles the route.
+- The live runtime now also executes `if_condition` / `switch` branch nodes plus `http_request` and `postgres_query` nodes against shared `Connection` records, records summarized connector traces, and returns connector/runtime failures instead of silently falling back to the legacy mock path.
+- A browser UX audit on 2026-03-18 found that the normal create-route journey is currently blocked because the route-definition form is hidden on the create/edit `Overview` surface, leaving no visible way to set name, method, path, or save a new route.
+- The same audit confirmed that Flow `Transform` string authoring still saves inline `{{...}}` references literally at runtime, the `Test` console still mixes schema/example preview behavior with published runtime language, and route deletion fails once `RouteImplementation` / `RouteDeployment` / execution records reference the route.
+- The current deploy surface still supports publish-only behavior; there is no explicit unpublish action to remove a route from live runtime dispatch while preserving the underlying route definition and draft implementation.
+- The schema studio and Flow palette interactions still rely on native browser drag/drop plus custom ghost helpers today; product direction now requires moving those bespoke surfaces onto a maintained drag-and-drop library with real drag overlays and richer copy/move behavior.
 - The admin account deletion path now removes all historical `adminsession` rows before deleting the user, so revoked or expired logins cannot strand dashboard accounts behind Postgres foreign-key errors.
-- The backend now reserves `/api/admin` plus other system-owned public paths like `/api` and `/api/reference.json`, so DB-defined mock endpoints cannot trespass into private or framework-owned route space.
+- The backend now reserves `/api/admin` plus other system-owned public paths like `/api` and `/api/reference.json`, so DB-defined public routes cannot trespass into private or framework-owned route space.
 - The backend now manages SQLModel sessions through a yielded request-scoped dependency plus a shared context manager, which prevents leaked connections from exhausting the Postgres pool under sustained traffic.
 - The backend now also exposes a branded Mockingbird landing page at `/` and `/api`, plus a live `/api/reference.json` feed backed directly by the current endpoint catalog.
 - The public landing page now treats the opening viewport as a real full-screen hero, prefers explicit `hero-top.*` and `hero-bottom.*` artwork files from `apps/api/static/landing/`, pins immediately beneath a fixed topbar, and places the headline/copy in a wide translucent overlay band near the top of the art.
@@ -42,6 +55,9 @@ Provide a Docker-first platform to define and serve configurable mock APIs with 
 - Seed data loads a 15-endpoint catalog, and `make seed` / `make test` work in Docker.
 - The repo now also includes a local production-like Compose path through `docker-compose.prod-local.yml` plus `make up-prod-local`, which builds the local `runtime` targets, serves the admin app through Nginx, drops backend hot reload, and recreates the same local Compose stack in place while reusing the dev database volume.
 - The frontend now runs on Vue + Vuetify, with a dedicated login flow, protected catalog/settings routes, a dedicated schema studio route, light/dark theme toggle, catalog search/filtering, and a Vuetify-first drag-and-drop builder surface.
+- The admin route workspace now also exposes explicit `Overview`, `Contract`, `Flow`, `Test`, and `Deploy` tabs; the `Flow` tab now uses a Vue Flow canvas with fixed-size nodes, visible `If`/`Switch` branch ports, drag-to-canvas palette actions, a browser-page full-editor mode, compact floating add/info/node launchers, a top-center control bar, a bottom-right MiniMap, node-local toolbars, and a toggleable inspector dock while preserving the same backend `flow_definition` contract.
+- The Flow-tab inspector now lets operators configure `If`, `Switch`, `HTTP Request`, and `Postgres Query` nodes directly, including branch-path metadata, saved-connection selection, request/query/header/body JSON for HTTP, and read-only parameterized SQL for Postgres.
+- The Flow full-editor shell is in much better shape than earlier iterations, but operators still lack visible input/output data-shape previews per node, pinned sample-data inspection, and cursor-aware helper-pill insertion inside JSON editors.
 - The admin frontend now stores bearer session tokens instead of raw passwords, redirects bootstrap/reset accounts into a mandatory password-rotation screen, and exposes a superuser-only dashboard-user management surface.
 - Admin users now carry explicit `viewer`, `editor`, or `superuser` roles; the backend returns derived permission bundles in auth/session payloads, the API enforces read/write/preview/user-management boundaries from those permissions, and the admin UI hides route-management actions when the signed-in role is read-only.
 - The RBAC Alembic rollout now backfills `adminuser.role` with dialect-safe SQLAlchemy updates, so existing Postgres dev volumes upgrade cleanly instead of failing on the boolean `is_superuser` backfill step.
@@ -66,6 +82,7 @@ Provide a Docker-first platform to define and serve configurable mock APIs with 
 - The CI Docker smoke test now seeds `.env` from `.env.example` before invoking Compose, so GitHub Actions no longer fails teardown/bootstrap in clean checkouts that do not include a local `.env`.
 - GitHub Actions now runs backend tests, frontend lint/test/build, and a Docker Compose smoke test on `main` pushes and pull requests, while a separate image workflow validates runtime images on PRs and publishes multi-arch `linux/amd64` + `linux/arm64` images to GHCR on `main` and `v*` tags.
 - The repo now includes a `deploy/docker-compose.ghcr.yml` example plus `deploy/.env.ghcr.example` so teams can run the stack from published GHCR images without cloning the full source tree.
+- The standalone deploy example no longer hardcodes the old fork's image names; it now uses `IMAGE_REPOSITORY`, defaulting to `ghcr.io/sxmxc/urban-octo-bassoon`, so the fork can be retargeted cleanly before the final product rename lands.
 - The seeded device catalog now defaults `deviceId` to UUID-style IDs and constrains `model` to the curated device-model enum list in both the list/detail device schemas.
 - The sign-in screen now uses a simpler single-column studio welcome above the form, with more human-facing copy and less implementation-heavy onboarding text.
 - The schema studio now uses draggable Vuetify chips for palette actions, a left-rail inspector, a dedicated preview rail, response preview regeneration, and a separate public-route preview page.
@@ -115,11 +132,12 @@ Provide a Docker-first platform to define and serve configurable mock APIs with 
 - Admin users now also carry optional `full_name`, `email`, and `avatar_url` fields, account menus show the username with a profile image in the top bar while falling back to Gravatar when no custom image is set, and raw Alembic CLI runs now resolve the configured database URL instead of silently falling back to the stale SQLite default from `alembic.ini`.
 - The admin shell now keeps the fixed top bar focused on brand, primary navigation, and account controls, while the `Users` page is directory-first with summary cards, search/filter controls, and dialog-based add/edit flows instead of a permanently open create form; the custom shell styling now uses theme-aware contrast values so both light and dark mode remain legible.
 - Vuetify MCP-verified cleanup removed the current admin-console deprecations by switching runtime theme sync to `theme.change(...)` and replacing deprecated `v-row dense` usage with `density=\"comfortable\"`.
-- The current connected pill-tree builder should now be treated as a transitional baseline rather than the long-term schema-editor architecture; near-term frontend work is expected to prototype a `Vue Flow` canvas while preserving the current backend schema contract and familiar inspector/preview workflow.
+- The current connected pill-tree builder should now be treated as a transitional baseline rather than the long-term schema-editor architecture; the route `Flow` tab now provides the first Vue Flow-based foundation, and future schema-editor experiments should preserve the current backend schema contract plus familiar inspector/preview workflow.
 - The GitHub wiki now lives in the separate `mockingbird.wiki` repository as a curated user/developer handbook, while `README.md` and `docs/` remain the canonical source of truth.
 
 ## Known Risks
 - Live OpenAPI generation may become slow if not cached.
+- The public contract surfaces still read from the enabled route catalog while the live runtime uses published deployments first, so docs/runtime drift remains a short-term transition risk until the publish boundary is tightened further.
 - Drag-and-drop schema editing is meaningfully more complex than the old textarea editor, so tree-state regressions are still worth watching closely.
 - The new pill-tree canvas depends on small icon-only insertion anchors, so future UX passes should keep keyboard/accessibility affordances in view while refining drag/drop.
 - A canvas-first pivot could make JSON Schema editing feel too abstract if node placement and edges drift away from the stored parent/child contract, so prototypes should keep the mapping between canvas visuals and schema structure obvious.
@@ -130,16 +148,24 @@ Provide a Docker-first platform to define and serve configurable mock APIs with 
 - The public landing page currently uses lightweight polling for the live quick reference rather than websockets or SSE.
 - The public landing page hero still depends on approved artwork being dropped into `apps/api/static/landing/hero.*`.
 - Admin UI and backend need to stay in sync on model schemas.
+- Connection management is still a placeholder list in the route workspace, so operators can bind live HTTP/Postgres nodes today but still lack a proper project/environment-aware UI for creating and rotating those records.
 - `AdminUser` now also tracks failed-login counters plus lockout timestamps, so future auth changes should keep the rate-limit/lockout migration path and audit logging behavior aligned across the API, tests, and docs.
 - Fresh installs still need an operator to capture the bootstrap password from `ADMIN_BOOTSTRAP_PASSWORD` or the API startup logs and rotate it promptly.
 - Request parameter modeling currently supports flat scalar/enum path and query fields only; nested object/array parameters and advanced OpenAPI serialization styles are still out of scope.
 - Slugs remain part of the backend endpoint model for seeding and bookkeeping, so future imports/scripts should keep treating them as internal identifiers rather than reintroducing them into the user-facing route form.
 - Catalog imports currently match existing routes by normalized `method + path`, so path/method renames behave like new routes unless operators use `replace_all`.
 - Local arm64 validation works through a temporary buildx/QEMU builder, but it is meaningfully slower than native amd64 builds because the admin runtime image has to cross-compile the full Vite bundle.
+- The current live runtime editor is now canvas-based, branch-aware, connector-aware, and more canvas-native in focus mode, but the runtime UX still leans on raw JSON fields and lacks richer data mapping, input/output previews, and pinned sample-data tooling.
 
 ## Notes for Next Agent
+- Read `docs/roadmap.md` first for the intended sequence and current architectural boundaries.
 - Keep tasks updated in `TASKS.md` as progress is made.
-- Focus next on prototyping the `Vue Flow`-based schema canvas architecture while preserving the existing schema contract now that RBAC and the account/users split have landed.
+- Focus next on tightening the published-runtime boundary so OpenAPI, `/api/reference.json`, and live dispatch agree more closely about what is truly public/live.
+- Keep the deployment-backed runtime boundary moving forward: the next meaningful work is publish-surface alignment plus a real connection-management UI on top of the now-live logic/connector node model.
+- The Flow full-editor now has a much better canvas shell, but local browser QA still needs a current admin credential; the stale `ADMIN_USERNAME` / `ADMIN_PASSWORD` pair in `.env` no longer signs into the current dev database.
+- The next UX-heavy Flow follow-up should focus on data mapping and sample-data visibility rather than adding more trigger types; `api_trigger` remains the only entry node for now.
+- Prioritize the audited UX blockers first: restore normal route create/editing, make `Test` clearly separate preview from live execution, add real string/data composition in Flow, show each node's incoming/outgoing shape, support caret-based helper-pill insertion in JSON fields, and make route deletion cascade safely through runtime records.
+- Browser QA should use a dedicated non-shared dashboard account instead of modifying the shared `admin` login during local verification.
 - Any future response-authoring experiments should preserve the schema studio's drag/drop pill-tree workflow, `x-builder.order` ordering, and the array `Item shape` model instead of falling back to a raw template-text editor.
 - If templating changes again, browser QA should verify that path/query/body-backed template previews in the schema studio still match the public runtime output.
 - Browser QA for catalog refresh should confirm that background sync updates non-selected routes, retains the last good list on refresh errors, and does not reset a dirty selected route form mid-edit.
@@ -167,5 +193,5 @@ Provide a Docker-first platform to define and serve configurable mock APIs with 
 - Admin bootstrap now uses `ADMIN_BOOTSTRAP_USERNAME` / `ADMIN_BOOTSTRAP_PASSWORD`; leaving the password blank generates a one-time value in the API startup logs and forces a password change on first sign-in.
 - Vuetify MCP is configured at the repo root via `.mcp.json`, and the frontend package exposes `npm run mcp:vuetify` plus `npm run mcp:vuetify:http` for local MCP usage.
 - Official container images now follow a tag-driven release scheme: `vX.Y.Z` tags publish semver image tags plus `latest`, while default-branch builds publish branch/`edge`/`sha-*` tags alongside uploaded image metadata artifacts and provenance attestations.
-- The standalone deployment example targets `ghcr.io/sxmxc/mockingbird-api` and `ghcr.io/sxmxc/mockingbird-admin-web`, defaults to `IMAGE_TAG=edge`, and should be pinned to a numbered release tag for production use.
+- The standalone deployment example now targets `${IMAGE_REPOSITORY}-api` and `${IMAGE_REPOSITORY}-admin-web`, with `IMAGE_REPOSITORY` defaulting to `ghcr.io/sxmxc/urban-octo-bassoon`.
 - `make up` can still fail locally if another Mockingbird checkout is already bound to ports `8000` and `3000`; the compose files themselves now build cleanly on the upgraded runtime line.

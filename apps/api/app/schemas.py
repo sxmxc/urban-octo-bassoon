@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.rbac import AdminPermission, AdminRole
+from app.models import ConnectionType
 
 
 class EndpointBase(BaseModel):
@@ -213,3 +214,90 @@ class PublicReferenceResponse(BaseModel):
     endpoint_count: int
     refreshed_at: datetime
     endpoints: List[PublicEndpointReference] = Field(default_factory=list)
+
+
+class RouteImplementationUpsert(BaseModel):
+    flow_definition: Dict[str, Any] = Field(default_factory=dict)
+
+
+class RouteImplementationRead(BaseModel):
+    id: Optional[int] = None
+    route_id: int
+    version: int
+    is_draft: bool = True
+    flow_definition: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RouteDeploymentPublishRequest(BaseModel):
+    environment: str = "production"
+
+
+class RouteDeploymentRead(BaseModel):
+    id: int
+    route_id: int
+    implementation_id: int
+    environment: str
+    is_active: bool
+    published_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ConnectionCreate(BaseModel):
+    name: str
+    connector_type: ConnectionType = ConnectionType.http
+    description: Optional[str] = None
+    config: Dict[str, Any] = Field(default_factory=dict)
+    is_active: bool = True
+
+
+class ConnectionRead(ConnectionCreate):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ExecutionStepRead(BaseModel):
+    id: int
+    node_id: str
+    node_type: str
+    order_index: int
+    status: str
+    input_data: Dict[str, Any] = Field(default_factory=dict)
+    output_data: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ExecutionRunRead(BaseModel):
+    id: int
+    route_id: int
+    deployment_id: Optional[int] = None
+    implementation_id: Optional[int] = None
+    environment: str
+    method: str
+    path: str
+    status: str
+    request_data: Dict[str, Any] = Field(default_factory=dict)
+    response_status_code: Optional[int] = None
+    response_body: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ExecutionRunDetail(ExecutionRunRead):
+    steps: List[ExecutionStepRead] = Field(default_factory=list)

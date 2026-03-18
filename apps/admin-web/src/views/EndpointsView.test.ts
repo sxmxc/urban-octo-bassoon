@@ -4,9 +4,15 @@ import { flushPromises } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { defineComponent } from "vue";
 import EndpointsView from "./EndpointsView.vue";
-import { listEndpoints } from "../api/admin";
+import {
+  getCurrentRouteImplementation,
+  listConnections,
+  listExecutions,
+  listEndpoints,
+  listRouteDeployments,
+} from "../api/admin";
 import { vuetify } from "../plugins/vuetify";
-import type { Endpoint, EndpointDraft } from "../types/endpoints";
+import type { Connection, Endpoint, EndpointDraft, ExecutionRun, RouteDeployment, RouteImplementation } from "../types/endpoints";
 
 const authStub = vi.hoisted(() => ({
   logout: vi.fn(),
@@ -46,7 +52,11 @@ vi.mock("../api/admin", async () => {
   const actual = await vi.importActual<typeof import("../api/admin")>("../api/admin");
   return {
     ...actual,
+    getCurrentRouteImplementation: vi.fn(),
+    listConnections: vi.fn(),
+    listExecutions: vi.fn(),
     listEndpoints: vi.fn(),
+    listRouteDeployments: vi.fn(),
     createEndpoint: vi.fn(),
     updateEndpoint: vi.fn(),
     deleteEndpoint: vi.fn(),
@@ -113,6 +123,37 @@ const EndpointSettingsFormStub = defineComponent({
   `,
 });
 
+// eslint-disable-next-line vue/one-component-per-file
+const RouteFlowEditorStub = defineComponent({
+  props: {
+    modelValue: {
+      type: Object,
+      required: true,
+    },
+    availableConnections: {
+      type: Array as () => Connection[],
+      default: () => [],
+    },
+    errorMessage: {
+      type: String,
+      default: null,
+    },
+    successStatusCode: {
+      type: Number,
+      default: 200,
+    },
+  },
+  emits: ["update:modelValue", "validation-change", "focus-mode-change"],
+  template: `
+    <div data-testid="route-flow-editor">
+      <div data-testid="route-flow-success">{{ successStatusCode }}</div>
+      <div data-testid="route-flow-connections">{{ availableConnections.length }}</div>
+      <div data-testid="route-flow-error">{{ errorMessage ?? "" }}</div>
+      <button type="button" @click="$emit('focus-mode-change', true)">Enter focus mode</button>
+    </div>
+  `,
+});
+
 function createRouterInstance() {
   const viewStub = { template: "<div />" };
 
@@ -155,6 +196,74 @@ function createEndpoint(id: number, overrides: Partial<Endpoint> = {}): Endpoint
   };
 }
 
+function createImplementation(routeId: number): RouteImplementation {
+  return {
+    id: routeId,
+    route_id: routeId,
+    version: 1,
+    is_draft: true,
+    flow_definition: {
+      schema_version: 1,
+      nodes: [
+        { id: "trigger", type: "api_trigger", config: {} },
+        { id: "response", type: "set_response", config: { status_code: 200, body: { status: "ok" } } },
+      ],
+      edges: [{ source: "trigger", target: "response" }],
+    },
+    created_at: "2026-03-18T00:00:00Z",
+    updated_at: "2026-03-18T00:00:00Z",
+  };
+}
+
+function createDeployment(routeId: number): RouteDeployment {
+  return {
+    id: routeId,
+    route_id: routeId,
+    implementation_id: routeId,
+    environment: "production",
+    is_active: true,
+    published_at: "2026-03-18T00:00:00Z",
+    created_at: "2026-03-18T00:00:00Z",
+    updated_at: "2026-03-18T00:00:00Z",
+  };
+}
+
+function createExecution(routeId: number): ExecutionRun {
+  return {
+    id: routeId,
+    route_id: routeId,
+    deployment_id: routeId,
+    implementation_id: routeId,
+    environment: "production",
+    method: "GET",
+    path: `/api/resource-${routeId}`,
+    status: "success",
+    request_data: {
+      path_parameters: {},
+      query_parameters: {},
+      body_present: false,
+    },
+    response_status_code: 200,
+    response_body: { status: "ok" },
+    error_message: null,
+    started_at: "2026-03-18T00:00:00Z",
+    completed_at: "2026-03-18T00:00:01Z",
+  };
+}
+
+function createConnection(id: number): Connection {
+  return {
+    id,
+    name: `Connection ${id}`,
+    connector_type: "http",
+    description: null,
+    config: {},
+    is_active: true,
+    created_at: "2026-03-18T00:00:00Z",
+    updated_at: "2026-03-18T00:00:00Z",
+  };
+}
+
 async function renderView(path: string, mode: "browse" | "create" | "edit") {
   const router = createRouterInstance();
   await router.push(path);
@@ -171,6 +280,7 @@ async function renderView(path: string, mode: "browse" | "create" | "edit") {
         stubs: {
           EndpointCatalog: EndpointCatalogStub,
           EndpointSettingsForm: EndpointSettingsFormStub,
+          RouteFlowEditor: RouteFlowEditorStub,
         },
       },
     }),
@@ -179,11 +289,19 @@ async function renderView(path: string, mode: "browse" | "create" | "edit") {
 
 describe("EndpointsView", () => {
   beforeEach(() => {
+    vi.mocked(getCurrentRouteImplementation).mockReset();
+    vi.mocked(listConnections).mockReset();
+    vi.mocked(listExecutions).mockReset();
     vi.mocked(listEndpoints).mockReset();
+    vi.mocked(listRouteDeployments).mockReset();
     authStub.logout.mockReset();
     authStub.canPreviewRoutes.value = true;
     authStub.canWriteRoutes.value = true;
     authStub.mustChangePassword.value = false;
+    vi.mocked(getCurrentRouteImplementation).mockResolvedValue(createImplementation(1));
+    vi.mocked(listRouteDeployments).mockResolvedValue([createDeployment(1)]);
+    vi.mocked(listExecutions).mockResolvedValue([createExecution(1)]);
+    vi.mocked(listConnections).mockResolvedValue([createConnection(1)]);
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
       value: "visible",
@@ -276,5 +394,44 @@ describe("EndpointsView", () => {
       name: "endpoint-preview",
       params: { endpointId: 1 },
     });
+  });
+
+  it("shows route-first tabs and loads flow scaffolding for an existing route", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
+
+    await renderView("/endpoints/1?tab=flow", "edit");
+    await flushPromises();
+
+    expect(screen.getByRole("tab", { name: "Flow" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("route-flow-editor")).toBeInTheDocument();
+    expect(screen.getByTestId("route-flow-success")).toHaveTextContent("200");
+    expect(screen.getByTestId("route-flow-connections")).toHaveTextContent("1");
+    expect(screen.getByText("Connection 1 · http")).toBeInTheDocument();
+    expect(vi.mocked(getCurrentRouteImplementation)).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ token: "session-token" }),
+    );
+    expect(vi.mocked(listRouteDeployments)).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ token: "session-token" }),
+    );
+    expect(vi.mocked(listExecutions)).toHaveBeenCalledWith(
+      expect.objectContaining({ token: "session-token" }),
+      { endpointId: 1, limit: 12 },
+    );
+  });
+
+  it("hides the shared connections card while the flow editor is in focus mode", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
+
+    await renderView("/endpoints/1?tab=flow", "edit");
+    await flushPromises();
+
+    expect(screen.getByText("Available connections")).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Enter focus mode" }));
+    await flushPromises();
+
+    expect(screen.queryByText("Available connections")).not.toBeInTheDocument();
   });
 });

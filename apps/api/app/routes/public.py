@@ -14,6 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from app.crud import list_endpoints
 from app.db import session_scope
 from app.services.mock_generation import preview_from_schema
+from app.services.route_runtime import execute_deployed_route_request
 
 router = APIRouter()
 PATH_PARAMETER_PATTERN = re.compile(r"\{([^/}]+)\}")
@@ -128,6 +129,22 @@ async def _parse_json_request_body(request: Request) -> Any:
 async def catchall(full_path: str, request: Request) -> Response:
     request_path = request.url.path
     method = request.method.upper()
+    request_body = await _parse_json_request_body(request)
+    query_parameters = {key: value for key, value in request.query_params.items()}
+
+    deployed_result = await run_in_threadpool(
+        _dispatch_deployed_route,
+        request_path,
+        method,
+        query_parameters,
+        request_body,
+    )
+    if deployed_result is not None:
+        return Response(
+            status_code=deployed_result.status_code,
+            content=json.dumps(deployed_result.body, default=str),
+            media_type="application/json",
+        )
 
     match, matched_path_parameters = await run_in_threadpool(_find_matching_endpoint, request_path, method)
 
@@ -147,11 +164,25 @@ async def catchall(full_path: str, request: Request) -> Response:
             media_type="application/json",
         )
 
-    request_body = await _parse_json_request_body(request)
-    query_parameters = {key: value for key, value in request.query_params.items()}
     body = await run_in_threadpool(_pick_response, match, matched_path_parameters, query_parameters, request_body)
     return Response(
         status_code=match.success_status_code,
         content=json.dumps(body, default=str),
         media_type="application/json",
     )
+
+
+def _dispatch_deployed_route(
+    request_path: str,
+    method: str,
+    query_parameters: dict[str, str],
+    request_body: Any,
+):
+    with session_scope() as session:
+        return execute_deployed_route_request(
+            session,
+            request_path=request_path,
+            method=method,
+            query_parameters=query_parameters,
+            request_body=request_body,
+        )

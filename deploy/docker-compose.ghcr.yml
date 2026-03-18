@@ -20,7 +20,7 @@ services:
       retries: 10
 
   api:
-    image: ghcr.io/sxmxc/mockingbird-api:${IMAGE_TAG:-edge}
+    image: ${IMAGE_REPOSITORY:-ghcr.io/sxmxc/urban-octo-bassoon}-api:${IMAGE_TAG:-edge}
     restart: unless-stopped
     pull_policy: always
     environment:
@@ -45,7 +45,7 @@ services:
       - "${API_PUBLISHED_PORT:-8000}:8000"
 
   admin-web:
-    image: ghcr.io/sxmxc/mockingbird-admin-web:${IMAGE_TAG:-edge}
+    image: ${IMAGE_REPOSITORY:-ghcr.io/sxmxc/urban-octo-bassoon}-admin-web:${IMAGE_TAG:-edge}
     restart: unless-stopped
     pull_policy: always
     environment:
@@ -57,4 +57,4 @@ services:
 
 volumes:
   pgdata:
-    name: ${POSTGRES_VOLUME_NAME:-mockingbird_api_pgdata}
+    name: ${POSTGRES_VOLUME_NAME:-urban_octo_bassoon_pgdata}

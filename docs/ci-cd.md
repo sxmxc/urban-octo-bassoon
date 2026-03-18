@@ -26,8 +26,8 @@ Published image names:
 
 For this repo, that resolves to:
 
-- `ghcr.io/sxmxc/mockingbird-api`
-- `ghcr.io/sxmxc/mockingbird-admin-web`
+- `ghcr.io/sxmxc/urban-octo-bassoon-api`
+- `ghcr.io/sxmxc/urban-octo-bassoon-admin-web`
 
 ## Tagging and versioning
 
@@ -78,4 +78,5 @@ Pushed images also emit provenance/SBOM data through the image workflow.
 
 - `deploy/docker-compose.ghcr.yml` is the example Compose file for environments that do not have the repo checked out.
 - `deploy/.env.ghcr.example` is the companion env template.
+- The example now uses `IMAGE_REPOSITORY` so the fork can be retargeted without editing the Compose file itself.
 - The example defaults to `IMAGE_TAG=edge` so it can track the latest default-branch image, but production deployments should pin an explicit release tag such as `1.2.3`.

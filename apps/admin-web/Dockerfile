@@ -7,7 +7,7 @@ RUN npm ci
 
 FROM base AS build
 
-ARG APP_VERSION=0.1.0
+ARG APP_VERSION=1.4.0-alpha.0
 ENV VITE_APP_VERSION=${APP_VERSION}
 
 COPY . .
@@ -24,7 +24,7 @@ CMD ["sh", "./start.sh"]
 
 FROM nginx:1.29 AS runtime
 
-ARG APP_VERSION=0.1.0
+ARG APP_VERSION=1.4.0-alpha.0
 ENV APP_VERSION=${APP_VERSION} \
     API_UPSTREAM=http://api:8000
 

@@ -1,5 +1,36 @@
 # DECISIONS
 
+## 2026-03-18: Bespoke editor drag-and-drop must move onto a maintained DnD library
+- **Interaction foundation**: Stop relying on native HTML5 `dragstart` / `drop` / `dataTransfer` as the primary interaction layer for bespoke editor surfaces such as the schema studio and Flow palette, because the browser-default drag model is too limited and inconsistent for the product we want.
+- **Preview quality**: Require a library-backed drag overlay/preview model so copy-style drags look like intentional tool copies rather than clipped screenshots of the original DOM node.
+- **Capability bar**: The chosen library must support custom drag previews, explicit copy-vs-move semantics, richer drop-state hooks, and enough extensibility to power both today's schema/tree interactions and the Flow editor's palette-to-canvas workflows.
+
+## 2026-03-18: Flow focus-mode tools should default to compact launchers
+- **Workspace rhythm**: In Flow focus mode, keep the canvas visually primary by defaulting add-node, flow-info, and selected-node tools to small floating launchers instead of leaving every overlay expanded all the time.
+- **Debug surfaces**: Treat route paths and designer JSON as secondary debugging surfaces behind a flow-info popover rather than a permanent bottom-center slab, so graph scanning stays readable on normal desktop heights.
+- **Inspector behavior**: Let node selection open the inspector on demand and keep a small selected-node launcher visible even when the dock is hidden, so detail editing stays one click away without monopolizing the canvas.
+
+## 2026-03-18: Flow full-editor should be canvas-native
+- **Workspace model**: Treat Flow focus mode as a dedicated in-canvas workspace that preserves the admin top bar and moves palette, diagnostics, and editing chrome into floating overlays instead of stretching the default page layout to fill more space.
+- **Vue Flow add-ons**: Lean on Vue Flow's supplemental UI where it directly improves workflow scanning and manipulation: floating `Controls` for viewport actions, `MiniMap` for spatial awareness, and `NodeToolbar` for node-local quick actions.
+- **Node ergonomics**: Keep workflow nodes fixed-size for scanability and use the floating inspector plus node-local quick actions for editing, rather than reintroducing expanding node cards on the graph.
+
+## 2026-03-18: Flow editor affordances must stay explicit
+- **Canvas behavior**: Keep flow nodes fixed-size on the graph and move detailed editing into the inspector, because node expansion on selection made layout and branch scanning less predictable.
+- **Branch behavior**: Surface `If` and `Switch` routing directly through visible canvas ports (`True`, `False`, `Case`, `Default`) plus path labels, instead of relying on inspector-only branch metadata to explain how a graph connects.
+- **Terminal behavior**: Treat `error_response` as a real terminal path for both validation failures and explicit branch exits, while still keeping `set_response` as the primary success terminal.
+- **Editor mode**: Provide a browser-page full-editor mode for Flow with palette, canvas, controls, and inspector intact, rather than overloading the canvas fit/center control with a fullscreen expectation.
+
+## 2026-03-18: API-first branching flow model
+- **Trigger model**: Keep `api_trigger` as the only entry node for now even while borrowing workflow UX ideas from n8n, so the product stays route-first instead of drifting into a generic automation builder.
+- **Logic model**: Introduce first-class `if_condition` and `switch` nodes on top of the existing connector/transform/response nodes, and make branch routing explicit on flow edges instead of hiding it in node-specific runtime behavior.
+- **Graph model**: Move the live runtime and Flow validator from a single linear path assumption to an acyclic branch-aware graph model, while still requiring every reachable branch to eventually resolve into `set_response` or an explicit `error_response` terminal.
+
+## 2026-03-18: First live connector execution model
+- **Node model**: Expand the live runtime with typed `http_request` and `postgres_query` flow nodes instead of overloading `transform` or `x-mock`, so outbound integrations remain explicit in `flow_definition` and keep the public contract boundary intact.
+- **Connection model**: Keep connector secrets/config on shared `Connection` records, require flow nodes to reference those saved connections by id, and let the Flow inspector bind nodes to those records rather than embedding connection credentials directly in the graph.
+- **Safety model**: Keep the first connector slice synchronous and bounded, using shared HTTP base URLs plus read-only parameterized Postgres queries, while recording summarized execution traces and continuing to reserve arbitrary user code execution for a later milestone.
+
 ## 2026-03-14: Project bootstrap decisions
 - **Tech stack**: FastAPI + SQLModel + Alembic for backend; the frontend started on React + Vite before later moving to Vue + Vuetify.
 - **Persistence**: Postgres is the single source of truth for endpoint definitions.
@@ -255,6 +286,26 @@
 - **Public routing**: Treat saved public paths as literal text plus explicit `{param}` placeholders, escape static segments before building match regexes, and keep the async catchall's sync DB/sample-generation work off the event loop so runtime traffic does not stall on synchronous SQLModel access.
 - **Admin auth**: Add baseline brute-force protection through per-account lockouts, per-IP throttling, and audit logging of failed/blocked/successful login attempts, while keeping `/api/admin/account/me` partial updates truly partial instead of requiring `username` on every profile edit.
 - **Headers**: Serve baseline browser hardening headers from both the FastAPI app and the admin runtime/dev shells, with CSP tuned separately for the public landing page, JSON API responses, and the Vite dev experience.
+
+## 2026-03-18: Route-first platform pivot foundation
+- **Product framing**: Reframe the repo, docs, and admin UI around a route-first API platform rather than a mock-only product, while keeping the existing schema-driven generator as preview/example infrastructure during the transition.
+- **Data model**: Introduce first-class backend models for `RouteImplementation`, `RouteDeployment`, `Connection`, `ExecutionRun`, and `ExecutionStep` instead of overloading `EndpointDefinition` with live-runtime concerns.
+- **Runtime boundary**: Make the public runtime check a compiled deployment registry first and execute only published live implementations there, while temporarily preserving a legacy mock fallback for undeployed routes so the pivot can land incrementally.
+- **Admin workflow**: Keep the route workspace route-first and split it into `Overview`, `Contract`, `Flow`, `Test`, and `Deploy` tabs, even before the full Vue Flow canvas is ready.
+
+## 2026-03-18: Image and deploy references should follow the active fork
+- **GHCR example config**: Stop hardcoding the previous fork's image names in the standalone deployment example; use `IMAGE_REPOSITORY` with a current-fork default instead so renames and forks do not require editing the compose file itself.
+- **Version baseline**: Align the API config, Dockerfiles, and frontend package metadata on the `1.4.0-alpha.0` line so local builds, runtime images, and OpenAPI metadata stop advertising the stale `0.1.0` default.
+
+## 2026-03-18: Route flow editor should ship as a constrained Vue Flow canvas
+- **Authoring surface**: Replace the raw `flow_definition` textarea with a Vue Flow canvas, starter-node palette, and right-side inspector while continuing to save the same backend `flow_definition` payload.
+- **Initial flow shape**: Keep the first editor intentionally narrow and easy to reason about by guiding authors toward one main execution path with exactly one `api_trigger`, exactly one `set_response`, an optional unconnected `error_response`, and small starter-node validation in the browser before save.
+- **Config UX**: Keep node configuration in the inspector and use small JSON sub-editors for transform output and response bodies instead of forcing either full-flow raw JSON editing or dense inline graph forms.
+
+## 2026-03-18: Flow designer interaction model should stay canvas-first and selection-local
+- **Node density**: Keep default flow nodes compact and scannable on the canvas, then let the selected node expand in place rather than making every step carry full-card weight all the time.
+- **Editing locality**: Move detailed node editing beneath the canvas in a dedicated dock so the designer reads as one focused workspace, with a sticky selected step, instead of splitting attention across a permanent right rail.
+- **Builder rhythm**: Favor a top toolbelt for adding steps, a large uninterrupted canvas, and a secondary signals/debug column over a three-column “palette / canvas / inspector” scaffolding layout, because the product is increasingly about live-flow composition rather than generic CRUD form filling.
 
 
 *> Future decisions should append a dated entry with context and rationale.*

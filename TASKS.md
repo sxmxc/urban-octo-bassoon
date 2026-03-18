@@ -1,19 +1,28 @@
 # TASKS
 
 This file tracks the work needed to bootstrap and evolve the project.
+Read `docs/roadmap.md` alongside this file if you are picking up the next implementation slice.
 
 ## Now
-- [ ] Prototype and validate a `Vue Flow`-based schema canvas architecture while preserving the existing `request_schema` / `response_schema` contract
+- [ ] Unblock the normal route create/edit journey by restoring visible route identity fields and save/create actions in the standard `Overview` flow
+- [ ] Tighten the published-runtime boundary so OpenAPI, public reference, and live dispatch can move cleanly from legacy mock fallback to deployment-backed routing
+- [ ] Add an explicit route unpublish/disable-live action so operators can remove a route from the live deployment registry without deleting the route definition or draft flow
+- [ ] Make the `Test` journey honest about what is preview/example output versus what is draft/live runtime execution
+- [ ] Fix route deletion so published routes with implementations, deployments, and executions can be removed cleanly from the UI and admin API
 
 ## Next
-- [ ] Incrementally migrate schema-studio drag/drop, insert menus, and branch controls onto the new canvas foundation
-- [ ] Add richer simulation UX around latency/error scenarios
-- [ ] Refine the public landing page quick reference with richer try-it tooling or grouped filtering if the catalog grows
+- [ ] Replace native HTML5 `dragstart` / `drop` / `dataTransfer` usage in bespoke editor surfaces with a maintained drag-and-drop library that supports drag overlays, copy/move semantics, and richer drop hooks
+- [ ] Add project/environment-aware connection management UI instead of the current route-level placeholder card
+- [ ] Add true Flow data-mapping support so operators can compose strings/objects from request and state data instead of only wiring whole refs
+- [ ] Add per-node input/output data-shape visibility plus pinned sample payload inspection in the Flow designer
+- [ ] Let Flow helper/ref pills insert into JSON editors at the current cursor or selection instead of replacing the whole field payload
+- [ ] Add execution drill-down and replay tooling on top of the new `ExecutionRun` / `ExecutionStep` records
+- [ ] Move the schema editor under the route `Contract` journey instead of keeping it as a separate transitional page
 
 ## Later
-- [ ] Add advanced auth (API key, bearer token, scopes)
-- [ ] Improve OpenAPI caching strategy for performance
-- [ ] Add multi-project support (namespaces)
+- [ ] Add advanced inbound auth (API keys, bearer token policies, scopes)
+- [ ] Improve OpenAPI and reference-feed publishing so only promoted runtime contracts are exposed
+- [ ] Add multi-project and multi-environment support beyond the current scaffolding defaults
 
 ## Blocked
 - [ ] (none)
@@ -106,3 +115,14 @@ This file tracks the work needed to bootstrap and evolve the project.
 - [x] Redesign the admin shell and users page with a cleaner top bar, directory-first user management, and dialog-based account creation
 - [x] Remove deprecated Vuetify theme and row-density usage surfaced by admin console warnings
 - [x] Harden the public/admin surfaces against landing-page XSS, literal-path route matching, login brute forcing, missing security headers, catchall event-loop blocking, and partial profile update failures
+- [x] Reframe the repo and docs around a route-first API platform instead of a mock-only product
+- [x] Add backend scaffolding for route implementations, deployments, connections, execution runs, and execution steps
+- [x] Add a deployment-backed live runtime path with a compiled route registry and starter flow execution engine
+- [x] Add admin API scaffolding plus route-first `Overview` / `Contract` / `Flow` / `Test` / `Deploy` workspace tabs
+- [x] Remove hardcoded old-fork GHCR references from deploy/docs defaults and make the image-only compose example repository-configurable
+- [x] Replace the raw `Flow` JSON placeholder with a real `Vue Flow`-backed live implementation editor
+- [x] Expand the live runtime beyond the starter node set with first-class `HTTP Request` and read-only `Postgres Query` connectors
+- [x] Add branch-aware logic nodes to the live runtime and Flow designer with first-class `If` / `Switch` support
+- [x] Rework Flow-designer UX around visible branch ports, drag-to-canvas palette behavior, explicit Error Response routing, auto-arrange, and a real browser-page full-editor mode
+- [x] Rebuild the Flow full-editor around floating in-canvas panels, a MiniMap, and node-local toolbars instead of stretching the old page layout
+- [x] Refine the Flow full-editor into a canvas-first workspace with compact floating launchers for add-node, flow-info, and selected-node inspection
