@@ -37,6 +37,7 @@ docker-compose.override.yml
 # Local build artifacts
 .codex-build/
 .codex-build-*/
+.codex/
 
 # OS
 .DS_Store
