@@ -9,6 +9,167 @@ import { createRequestParameterDefinition } from "../utils/requestSchema";
 import type { BuilderScope } from "../schemaBuilder";
 import type { JsonObject } from "../types/endpoints";
 
+type StubInput = {
+  altKey: boolean;
+  button: number;
+  buttons: number;
+  clientX: number;
+  clientY: number;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  pageX: number;
+  pageY: number;
+  shiftKey: boolean;
+};
+
+type StubSource = {
+  data: Record<string, unknown>;
+  dragHandle: Element;
+  element: Element;
+};
+
+type StubLocation = {
+  current: {
+    dropTargets: never[];
+    input: StubInput;
+  };
+  initial: {
+    dropTargets: never[];
+    input: StubInput;
+  };
+  previous: {
+    dropTargets: never[];
+  };
+};
+
+type RegisteredDraggable = {
+  element: Element;
+  getInitialData?: (args: { dragHandle: Element; element: Element; input: StubInput }) => Record<string, unknown>;
+  onGenerateDragPreview?: (args: { location: StubLocation; nativeSetDragImage: ReturnType<typeof vi.fn>; source: StubSource }) => void;
+  onDragStart?: (args: { location: StubLocation; source: StubSource }) => void;
+  onDrop?: (args: { location: StubLocation; source: StubSource }) => void;
+};
+
+type DropTargetSelf = {
+  data: Record<string, unknown>;
+  dropEffect: string;
+  element: Element;
+  isActiveDueToStickiness: boolean;
+};
+
+type RegisteredDropTarget = {
+  element: Element;
+  canDrop?: (args: { element: Element; input: StubInput; source: StubSource }) => boolean;
+  onDragEnter?: (args: { location: StubLocation; self: DropTargetSelf; source: StubSource }) => void;
+  onDrop?: (args: { location: StubLocation; self: DropTargetSelf; source: StubSource }) => void;
+};
+
+const dndStub = vi.hoisted(() => {
+  const draggables = new Map<Element, RegisteredDraggable>();
+  const dropTargets = new Map<Element, RegisteredDropTarget>();
+
+  function reset() {
+    draggables.clear();
+    dropTargets.clear();
+  }
+
+  function simulateDrop(sourceElement: Element, targetElement: Element) {
+    const draggableArgs = draggables.get(sourceElement);
+    const dropTargetArgs = dropTargets.get(targetElement);
+
+    if (!draggableArgs) {
+      throw new Error("Missing draggable registration for source element.");
+    }
+
+    if (!dropTargetArgs) {
+      throw new Error("Missing drop target registration for target element.");
+    }
+
+    const input = {
+      altKey: false,
+      button: 0,
+      buttons: 1,
+      clientX: 320,
+      clientY: 180,
+      ctrlKey: false,
+      metaKey: false,
+      pageX: 320,
+      pageY: 180,
+      shiftKey: false,
+    };
+    const location = {
+      current: {
+        dropTargets: [],
+        input,
+      },
+      initial: {
+        dropTargets: [],
+        input,
+      },
+      previous: {
+        dropTargets: [],
+      },
+    };
+    const source = {
+      data: draggableArgs.getInitialData?.({
+        dragHandle: sourceElement,
+        element: sourceElement,
+        input,
+      }) ?? {},
+      dragHandle: sourceElement,
+      element: sourceElement,
+    };
+
+    draggableArgs.onGenerateDragPreview?.({
+      location,
+      nativeSetDragImage: vi.fn(),
+      source,
+    });
+    draggableArgs.onDragStart?.({
+      location,
+      source,
+    });
+
+    const canDrop = dropTargetArgs.canDrop?.({
+      element: targetElement,
+      input,
+      source,
+    }) ?? true;
+
+    if (canDrop) {
+      const self = {
+        data: {},
+        dropEffect: "move",
+        element: targetElement,
+        isActiveDueToStickiness: false,
+      };
+
+      dropTargetArgs.onDragEnter?.({
+        location,
+        self,
+        source,
+      });
+      dropTargetArgs.onDrop?.({
+        location,
+        self,
+        source,
+      });
+    }
+
+    draggableArgs.onDrop?.({
+      location,
+      source,
+    });
+  }
+
+  return {
+    draggables,
+    dropTargets,
+    reset,
+    simulateDrop,
+  };
+});
+
 const authStub = vi.hoisted(() => ({
   logout: vi.fn(),
   session: {
@@ -47,6 +208,29 @@ vi.mock("../api/admin", async () => {
     previewResponse: vi.fn(),
   };
 });
+
+vi.mock("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
+  draggable: vi.fn((args: RegisteredDraggable) => {
+    dndStub.draggables.set(args.element, args);
+    return () => {
+      dndStub.draggables.delete(args.element);
+    };
+  }),
+  dropTargetForElements: vi.fn((args: RegisteredDropTarget) => {
+    dndStub.dropTargets.set(args.element, args);
+    return () => {
+      dndStub.dropTargets.delete(args.element);
+    };
+  }),
+}));
+
+vi.mock("@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview", () => ({
+  setCustomNativeDragPreview: vi.fn(({ render }: { render: ({ container }: { container: HTMLElement }) => (() => void) | void }) => {
+    const container = document.createElement("div");
+    const cleanup = render({ container });
+    cleanup?.();
+  }),
+}));
 
 function createRouterInstance() {
   return createRouter({
@@ -129,6 +313,7 @@ describe("SchemaEditorWorkspace", () => {
     vi.useFakeTimers();
     vi.mocked(previewResponse).mockReset();
     authStub.logout.mockReset();
+    dndStub.reset();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: {
@@ -161,8 +346,7 @@ describe("SchemaEditorWorkspace", () => {
     expect(paletteChip).not.toBeNull();
     expect(rootDropZone).not.toBeNull();
 
-    await fireEvent.dragStart(paletteChip as Element);
-    await fireEvent.drop(rootDropZone as Element);
+    dndStub.simulateDrop(paletteChip as Element, rootDropZone as Element);
 
     const schemaUpdates = emitted()["update:schema"] as Array<[JsonObject]> | undefined;
 
@@ -243,8 +427,7 @@ describe("SchemaEditorWorkspace", () => {
     );
     expect(idAnchor).not.toBeNull();
 
-    await fireEvent.dragStart(valueNode as Element);
-    await fireEvent.drop(idAnchor as Element);
+    dndStub.simulateDrop(valueNode as Element, idAnchor as Element);
 
     const schemaUpdates = emitted()["update:schema"] as Array<[JsonObject]> | undefined;
     expect(schemaUpdates?.at(-1)?.[0]).toMatchObject({
@@ -279,8 +462,7 @@ describe("SchemaEditorWorkspace", () => {
     expect(paletteChip).not.toBeNull();
     expect(endAnchor).not.toBeNull();
 
-    await fireEvent.dragStart(paletteChip as Element);
-    await fireEvent.drop(endAnchor as Element);
+    dndStub.simulateDrop(paletteChip as Element, endAnchor as Element);
 
     const schemaUpdates = emitted()["update:schema"] as Array<[JsonObject]> | undefined;
     expect(schemaUpdates?.at(-1)?.[0]).toMatchObject({
@@ -324,8 +506,7 @@ describe("SchemaEditorWorkspace", () => {
     expect(valueSlot).not.toBeNull();
     expect(parameterPill).not.toBeNull();
 
-    await fireEvent.dragStart(parameterPill as Element);
-    await fireEvent.drop(valueSlot as Element);
+    dndStub.simulateDrop(parameterPill as Element, valueSlot as Element);
 
     const schemaUpdates = emitted()["update:schema"] as Array<[JsonObject]> | undefined;
     expect(schemaUpdates?.at(-1)?.[0]).toMatchObject({
@@ -377,8 +558,7 @@ describe("SchemaEditorWorkspace", () => {
     expect(valueSlot).not.toBeNull();
     expect(parameterPill).not.toBeNull();
 
-    await fireEvent.dragStart(parameterPill as Element);
-    await fireEvent.drop(valueSlot as Element);
+    dndStub.simulateDrop(parameterPill as Element, valueSlot as Element);
 
     const schemaUpdates = emitted()["update:schema"] as Array<[JsonObject]> | undefined;
     expect(schemaUpdates?.at(-1)?.[0]).toMatchObject({
@@ -436,8 +616,7 @@ describe("SchemaEditorWorkspace", () => {
     expect(valueSlot).not.toBeNull();
     expect(parameterPill).not.toBeNull();
 
-    await fireEvent.dragStart(parameterPill as Element);
-    await fireEvent.drop(valueSlot as Element);
+    dndStub.simulateDrop(parameterPill as Element, valueSlot as Element);
 
     const schemaUpdates = emitted()["update:schema"] as Array<[JsonObject]> | undefined;
     expect(schemaUpdates?.at(-1)?.[0]).toMatchObject({
@@ -496,11 +675,9 @@ describe("SchemaEditorWorkspace", () => {
     expect(pricePill).not.toBeNull();
     expect(mockingPill).not.toBeNull();
 
-    await fireEvent.dragStart(pricePill as Element);
-    await fireEvent.drop(valueSlot as Element);
+    dndStub.simulateDrop(pricePill as Element, valueSlot as Element);
 
-    await fireEvent.dragStart(mockingPill as Element);
-    await fireEvent.drop(valueSlot as Element);
+    dndStub.simulateDrop(mockingPill as Element, valueSlot as Element);
 
     const schemaUpdates = emitted()["update:schema"] as Array<[JsonObject]> | undefined;
     expect(schemaUpdates?.at(-1)?.[0]).toMatchObject({

@@ -1,5 +1,10 @@
 # DECISIONS
 
+## 2026-03-19: Bespoke editor drags now use Pragmatic Drag and Drop
+- **Library choice**: Use Atlassian's Pragmatic Drag and Drop package for the schema editor and Flow palette surfaces instead of continuing to hand-wire native `dragstart` / `drop` / `dataTransfer`.
+- **Shared interaction model**: Wrap the library in a small frontend utility so schema palette copies, schema-node moves, and Flow palette-to-canvas drops all share the same drag-preview and drop-target semantics without duplicating low-level setup in each component.
+- **Testing strategy**: Keep schema-editor component coverage by mocking the library registrations in Vitest rather than relying on brittle jsdom drag-event behavior, and rely on browser-driven QA to validate the Flow canvas path until dedicated Flow tests land.
+
 ## 2026-03-19: Route deletion should explicitly clear runtime records
 - **Operator workflow**: Deleting a route from the admin API or from a confirmed `replace_all` import should succeed even after the route has saved implementations, deployments, and execution history.
 - **Cleanup order**: Explicitly delete `ExecutionStep`, `ExecutionRun`, `RouteDeployment`, and `RouteImplementation` records before removing the `EndpointDefinition`, rather than relying on database-level cascades or manual cleanup.

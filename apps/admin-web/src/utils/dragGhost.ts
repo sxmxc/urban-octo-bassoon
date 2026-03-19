@@ -1,17 +1,16 @@
+import { pointerOutsideOfPreview } from "@atlaskit/pragmatic-drag-and-drop/element/pointer-outside-of-preview";
+import { setCustomNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview";
+import type { ElementEventPayloadMap } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+
 export type DragGhostTone = "mode" | "node" | "value";
 
-export function setPillDragImage(
-  event: DragEvent | undefined,
-  options: {
-    eyebrow?: string;
-    label: string;
-    tone: DragGhostTone;
-  },
-): void {
-  if (!event?.dataTransfer || typeof document === "undefined") {
-    return;
-  }
+export type DragGhostOptions = {
+  eyebrow?: string;
+  label: string;
+  tone: DragGhostTone;
+};
 
+export function createPillDragGhost(options: DragGhostOptions): HTMLDivElement {
   const ghost = document.createElement("div");
   ghost.className = `schema-drag-ghost schema-drag-ghost-${options.tone}`;
 
@@ -27,12 +26,38 @@ export function setPillDragImage(
   label.textContent = options.label;
   ghost.append(label);
 
-  document.body.append(ghost);
-  event.dataTransfer.setDragImage(ghost, 18, Math.max(18, Math.round(ghost.offsetHeight / 2)));
+  return ghost;
+}
 
-  window.requestAnimationFrame(() => {
-    window.setTimeout(() => {
-      ghost.remove();
-    }, 0);
+export function setPillDragPreview(
+  nativeSetDragImage: ElementEventPayloadMap["onGenerateDragPreview"]["nativeSetDragImage"],
+  options: DragGhostOptions,
+): void {
+  if (!nativeSetDragImage || typeof document === "undefined") {
+    return;
+  }
+
+  setCustomNativeDragPreview({
+    nativeSetDragImage,
+    getOffset: pointerOutsideOfPreview({
+      x: "16px",
+      y: "12px",
+    }),
+    render: ({ container }) => {
+      const ghost = createPillDragGhost(options);
+      container.append(ghost);
+
+      return () => {
+        ghost.remove();
+      };
+    },
   });
+}
+
+export function setDragSourceClass(element: Element | null, className: string, active: boolean): void {
+  if (!(element instanceof HTMLElement)) {
+    return;
+  }
+
+  element.classList.toggle(className, active);
 }

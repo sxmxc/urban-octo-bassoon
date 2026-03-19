@@ -5,8 +5,19 @@ import { AdminApiError, previewResponse } from "../api/admin";
 import SchemaNodeCard from "./SchemaNodeCard.vue";
 import { copyText } from "../utils/clipboard";
 import { useAuth } from "../composables/useAuth";
-import { setPillDragImage } from "../utils/dragGhost";
 import { highlightJson } from "../utils/jsonHighlight";
+import {
+  vPragmaticDraggable,
+  type PragmaticDraggableBinding,
+} from "../utils/pragmaticDnd";
+import {
+  createSchemaModePaletteDragPayload,
+  createSchemaNodePaletteDragPayload,
+  createSchemaPathParameterDragPayload,
+  createSchemaValuePaletteDragPayload,
+  getSchemaDragPayload,
+  type SchemaDragPayload,
+} from "../utils/schemaDragDrop";
 import {
   buildDefaultParameterValue,
   createRequestParameterDefinition,
@@ -47,13 +58,6 @@ import {
   collectRequestBodyTemplatePaths,
   validateResponseTemplate,
 } from "../utils/responseTemplates";
-
-type DragPayload =
-  | { kind: "mode-palette"; mode: MockMode }
-  | { kind: "node-palette"; nodeType: BuilderNodeType }
-  | { kind: "path-parameter"; parameter: RequestParameterDefinition }
-  | { kind: "value-palette"; valueType: string }
-  | { kind: "node"; nodeId: string };
 
 const props = defineProps<{
   pathParameters?: Array<RequestParameterDefinition | string>;
@@ -175,7 +179,6 @@ const collapsedNodeIds = ref<string[]>([]);
 const importDialog = ref(false);
 const importError = ref<string | null>(null);
 const importText = ref("");
-const dragPayload = ref<DragPayload | null>(null);
 const previewStatus = ref<"idle" | "loading" | "success" | "error">("idle");
 const previewBody = ref("");
 const previewError = ref<string | null>(null);
@@ -685,79 +688,60 @@ function commitTree(nextTree: SchemaBuilderNode): void {
   emit("update:schema", liveSchema.value);
 }
 
-function setDragData(event: DragEvent | undefined, value: string, effect: "copy" | "move"): void {
-  if (!event?.dataTransfer) {
-    return;
-  }
-
-  event.dataTransfer.effectAllowed = effect;
-  event.dataTransfer.dropEffect = effect;
-  event.dataTransfer.setData("text/plain", value);
+function setDragSourceActive(element: HTMLElement, active: boolean): void {
+  element.classList.toggle("schema-drag-source", active);
 }
 
-function markDragSource(event?: DragEvent): void {
-  const source = event?.currentTarget;
-  if (!(source instanceof HTMLElement)) {
-    return;
-  }
-
-  source.classList.add("schema-drag-source");
-  source.addEventListener("dragend", () => {
-    source.classList.remove("schema-drag-source");
-  }, { once: true });
+function createDragBinding(
+  data: SchemaDragPayload,
+  preview: {
+    eyebrow?: string;
+    label: string;
+    tone: "mode" | "node" | "value";
+  },
+): PragmaticDraggableBinding<Record<string, unknown>> {
+  return {
+    data: data as unknown as Record<string, unknown>,
+    preview,
+    onDragStart: ({ element }) => {
+      setDragSourceActive(element, true);
+    },
+    onDrop: ({ element }) => {
+      setDragSourceActive(element, false);
+    },
+  };
 }
 
-function startNodePaletteDrag(nodeType: BuilderNodeType, event?: DragEvent): void {
-  dragPayload.value = { kind: "node-palette", nodeType };
-  setDragData(event, `node-palette:${nodeType}`, "copy");
-  markDragSource(event);
-  setPillDragImage(event, {
+function nodePaletteDragBinding(nodeType: BuilderNodeType): PragmaticDraggableBinding<Record<string, unknown>> {
+  return createDragBinding(createSchemaNodePaletteDragPayload(nodeType), {
     eyebrow: "Node",
     label: paletteOptions.find((item) => item.type === nodeType)?.label ?? nodeType,
     tone: "node",
   });
 }
 
-function startValuePaletteDrag(valueType: string, event?: DragEvent): void {
-  dragPayload.value = { kind: "value-palette", valueType };
-  setDragData(event, `value-palette:${valueType}`, "copy");
-  markDragSource(event);
-  setPillDragImage(event, {
+function valuePaletteDragBinding(valueType: string): PragmaticDraggableBinding<Record<string, unknown>> {
+  return createDragBinding(createSchemaValuePaletteDragPayload(valueType), {
     eyebrow: "Value",
     label: valueTypeLabel(valueType),
     tone: "value",
   });
 }
 
-function startPathParameterDrag(parameter: RequestParameterDefinition, event?: DragEvent): void {
-  dragPayload.value = { kind: "path-parameter", parameter };
-  setDragData(event, `path-parameter:${parameter.name}`, "copy");
-  markDragSource(event);
-  setPillDragImage(event, {
+function pathParameterDragBinding(parameter: RequestParameterDefinition): PragmaticDraggableBinding<Record<string, unknown>> {
+  return createDragBinding(createSchemaPathParameterDragPayload(parameter), {
     eyebrow: "Route",
     label: parameter.name,
     tone: "value",
   });
 }
 
-function startModePaletteDrag(mode: MockMode, event?: DragEvent): void {
-  dragPayload.value = { kind: "mode-palette", mode };
-  setDragData(event, `mode-palette:${mode}`, "copy");
-  markDragSource(event);
-  setPillDragImage(event, {
+function modePaletteDragBinding(mode: MockMode): PragmaticDraggableBinding<Record<string, unknown>> {
+  return createDragBinding(createSchemaModePaletteDragPayload(mode), {
     eyebrow: "Behavior",
     label: behaviorPalette.find((item) => item.value === mode)?.label ?? mode,
     tone: "mode",
   });
-}
-
-function startNodeDrag(nodeId: string, event?: DragEvent): void {
-  dragPayload.value = { kind: "node", nodeId };
-  setDragData(event, `node:${nodeId}`, "move");
-}
-
-function clearDragPayload(): void {
-  dragPayload.value = null;
 }
 
 function addNodeFromPalette(nodeType: BuilderNodeType): void {
@@ -821,41 +805,37 @@ function applyModeToNode(nodeId: string, mode: MockMode): void {
   })));
 }
 
-function handleDropOnContainer(containerId: string): void {
-  if (!dragPayload.value) {
+function handleDropOnContainer(containerId: string, sourceData: unknown): void {
+  const payload = getSchemaDragPayload(sourceData);
+  if (!payload) {
     return;
   }
 
-  if (dragPayload.value.kind === "node-palette") {
-    commitTree(addNodeToContainer(tree.value, containerId, dragPayload.value.nodeType, props.scope));
+  if (payload.kind === "node-palette") {
+    commitTree(addNodeToContainer(tree.value, containerId, payload.nodeType, props.scope));
   } else {
-    if (dragPayload.value.kind === "node") {
-      commitTree(moveNodeToContainer(tree.value, dragPayload.value.nodeId, containerId));
+    if (payload.kind === "node") {
+      commitTree(moveNodeToContainer(tree.value, payload.nodeId, containerId));
     }
   }
-
-  clearDragPayload();
 }
 
-function handleDropBeforeRow(nodeId: string): void {
-  if (!dragPayload.value) {
+function handleDropBeforeRow(nodeId: string, sourceData: unknown): void {
+  const payload = getSchemaDragPayload(sourceData);
+  if (!payload) {
     return;
   }
 
-  if (dragPayload.value.kind === "node-palette") {
-    commitTree(insertNewNodeBeforeSibling(tree.value, nodeId, dragPayload.value.nodeType, props.scope));
+  if (payload.kind === "node-palette") {
+    commitTree(insertNewNodeBeforeSibling(tree.value, nodeId, payload.nodeType, props.scope));
   } else {
-    if (dragPayload.value.kind === "node") {
-      commitTree(moveNodeBeforeSibling(tree.value, dragPayload.value.nodeId, nodeId));
+    if (payload.kind === "node") {
+      commitTree(moveNodeBeforeSibling(tree.value, payload.nodeId, nodeId));
     }
   }
-
-  clearDragPayload();
 }
 
 function insertNodeFromMenu(targetId: string, placement: "before" | "container", nodeType: BuilderNodeType): void {
-  clearDragPayload();
-
   if (placement === "before") {
     commitTree(insertNewNodeBeforeSibling(tree.value, targetId, nodeType, props.scope));
     return;
@@ -881,20 +861,19 @@ function toggleNodeCollapsed(nodeId: string): void {
   collapsedNodeIds.value = [...collapsedNodeIds.value, nodeId];
 }
 
-function handleDropOnValue(nodeId: string): void {
-  if (!dragPayload.value) {
+function handleDropOnValue(nodeId: string, sourceData: unknown): void {
+  const payload = getSchemaDragPayload(sourceData);
+  if (!payload) {
     return;
   }
 
-  if (dragPayload.value.kind === "path-parameter") {
-    commitTree(applyPathParameter(tree.value, nodeId, dragPayload.value.parameter, props.scope));
-  } else if (dragPayload.value.kind === "value-palette") {
-    commitTree(applyValueType(tree.value, nodeId, dragPayload.value.valueType, props.scope));
-  } else if (dragPayload.value.kind === "mode-palette") {
-    applyModeToNode(nodeId, dragPayload.value.mode);
+  if (payload.kind === "path-parameter") {
+    commitTree(applyPathParameter(tree.value, nodeId, payload.parameter, props.scope));
+  } else if (payload.kind === "value-palette") {
+    commitTree(applyValueType(tree.value, nodeId, payload.valueType, props.scope));
+  } else if (payload.kind === "mode-palette") {
+    applyModeToNode(nodeId, payload.mode);
   }
-
-  clearDragPayload();
 }
 
 function updateSelectedNode(
@@ -1148,7 +1127,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <v-row class="schema-studio-grid" @dragend="clearDragPayload">
+  <v-row class="schema-studio-grid">
     <v-col class="schema-sidebar-col" cols="12" xl="3" lg="3">
       <div class="schema-sidebar d-flex flex-column ga-4">
         <v-card class="workspace-card">
@@ -1170,15 +1149,14 @@ onBeforeUnmount(() => {
                 <v-chip
                   v-for="item in paletteOptions"
                   :key="item.type"
+                  v-pragmatic-draggable="nodePaletteDragBinding(item.type)"
                   :data-palette-type="item.type"
                   class="schema-pill"
                   :class="{ 'schema-pill-active': selectedNode.type === item.type }"
-                  :draggable="true"
                   label
                   size="small"
                   variant="elevated"
                   @click="addNodeFromPalette(item.type)"
-                  @dragstart="startNodePaletteDrag(item.type, $event)"
                 >
                   <template #prepend>
                     <v-icon :icon="item.icon" size="18" />
@@ -1202,15 +1180,14 @@ onBeforeUnmount(() => {
                   <v-chip
                     v-for="parameter in responsePathParameters"
                     :key="parameter.name"
+                    v-pragmatic-draggable="pathParameterDragBinding(parameter)"
                     :data-path-parameter="parameter.name"
                     class="schema-value-pill schema-value-pill-parameter"
                     :class="{ 'schema-value-pill-active': selectedUsesPathParameter && selectedNode.parameterSource === parameter.name }"
-                    :draggable="true"
                     label
                     size="small"
                     variant="elevated"
                     @click="applyPathParameterFromPalette(parameter)"
-                    @dragstart="startPathParameterDrag(parameter, $event)"
                   >
                     <template #prepend>
                       <v-icon icon="mdi-variable" size="18" />
@@ -1234,7 +1211,6 @@ onBeforeUnmount(() => {
                     size="small"
                     variant="elevated"
                     @click="insertQueryParameterToken(parameter)"
-                    @dragstart.prevent
                   >
                     <template #prepend>
                       <v-icon icon="mdi-tune-variant" size="18" />
@@ -1251,15 +1227,14 @@ onBeforeUnmount(() => {
                 <v-chip
                   v-for="item in behaviorPalette"
                   :key="item.value"
+                  v-pragmatic-draggable="modePaletteDragBinding(item.value)"
                   :data-value-mode="item.value"
                   class="schema-mode-pill"
                   :class="{ 'schema-mode-pill-active': selectedHasValueLane && selectedNode.mode === item.value }"
-                  :draggable="true"
                   label
                   size="small"
                   variant="elevated"
                   @click="selectedHasValueLane && applyModeToNode(selectedNode.id, item.value)"
-                  @dragstart="startModePaletteDrag(item.value, $event)"
                 >
                   <template #prepend>
                     <v-icon :icon="item.icon" size="16" />
@@ -1284,15 +1259,14 @@ onBeforeUnmount(() => {
                     <v-chip
                       v-for="item in section.items"
                       :key="item.value"
+                      v-pragmatic-draggable="valuePaletteDragBinding(item.value)"
                       :data-value-type="item.value"
                       class="schema-value-pill"
                       :class="{ 'schema-value-pill-active': selectedHasValueLane && selectedValueType === item.value }"
-                      :draggable="true"
                       label
                       size="small"
                       variant="elevated"
                       @click="applyValueTypeFromPalette(item.value)"
-                      @dragstart="startValuePaletteDrag(item.value, $event)"
                     >
                       <template #prepend>
                         <v-icon :icon="item.icon" size="16" />
@@ -1384,7 +1358,6 @@ onBeforeUnmount(() => {
               @drop-value="handleDropOnValue"
               @insert-node="insertNodeFromMenu"
               @select="selectedNodeId = $event"
-              @start-drag="startNodeDrag"
               @toggle-collapse="toggleNodeCollapsed"
             />
           </v-card-text>

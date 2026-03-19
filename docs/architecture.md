@@ -40,6 +40,7 @@ The current milestone is the **first branch-aware live-flow slice**:
   - Provides route catalog management, a dedicated schema studio, preview tools, a personal profile flow, superuser-only user management, auth-protected admin workflows with role-aware UI gating, and new route-first tabs for `Overview`, `Contract`, `Flow`, `Test`, and `Deploy`.
   - The schema studio is intentionally pivoting from a bespoke pill-tree drag/drop surface toward a canvas-first architecture, with `Vue Flow` as the leading frontend foundation, while preserving the existing backend JSON Schema contracts.
   - The `Flow` surface now uses a constrained Vue Flow canvas with an API-first entry node, branch-aware logic/connector palettes, visible branch ports, drag-to-canvas placement, explicit `error_response` routing, inspector editing, and a more canvas-native full-editor mode built around compact floating launchers, a top-center control bar, a MiniMap, and node-local toolbars while preserving the same backend flow-definition model.
+  - The schema editor and Flow palette now route their bespoke drag interactions through a shared Pragmatic Drag and Drop wrapper, which replaces the older native `dataTransfer` plumbing with maintained drag previews plus richer copy/move drop hooks.
   - Local Docker development uses a Vite-based `dev` image target, while release builds package the compiled SPA behind Nginx in a separate `runtime` target.
 
 - **Orchestration**
@@ -60,6 +61,5 @@ The current milestone is the **first branch-aware live-flow slice**:
 ## Immediate next step
 
 The next major implementation task should deepen the operator surface:
-- replace the remaining bespoke drag/drop interactions with a maintained library that supports overlays plus richer drop semantics
 - add connection-management, data-mapping, and sample-data tooling to the Flow workspace
 - keep the preview/runtime split intact while those UX passes land, so contract previews stay schema-driven and live/public execution stays deployment-backed

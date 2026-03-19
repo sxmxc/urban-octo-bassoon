@@ -17,6 +17,7 @@
     "mcp:vuetify:http": "mcp --transport=http --port=3232 --host=0.0.0.0 --stateless"
   },
   "dependencies": {
+    "@atlaskit/pragmatic-drag-and-drop": "^1.7.9",
     "@mdi/font": "^7.4.47",
     "@vue-flow/background": "^1.3.2",
     "@vue-flow/controls": "^1.1.3",

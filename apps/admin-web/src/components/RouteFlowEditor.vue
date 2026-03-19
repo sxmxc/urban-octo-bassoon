@@ -28,13 +28,22 @@ import {
   createRouteFlowNode,
   defaultRouteFlowEdgeExtra,
   getRouteFlowNodePreset,
-  isRouteFlowNodeType,
   normalizeRouteFlowDefinition,
   routeFlowEdgeLabel,
   serializeRouteFlowDefinition,
   validateRouteFlowConnection,
   validateRouteFlowDefinition,
 } from "../utils/routeFlow";
+import {
+  vPragmaticDraggable,
+  vPragmaticDropTarget,
+  type PragmaticDraggableBinding,
+  type PragmaticDropTargetBinding,
+} from "../utils/pragmaticDnd";
+import {
+  createRouteFlowPaletteDragPayload,
+  getRouteFlowPaletteDragPayload,
+} from "../utils/routeFlowDragDrop";
 
 interface RouteFlowCanvasNodeData {
   title: string;
@@ -77,7 +86,6 @@ interface CanvasEdge {
 type ReferenceTarget = "transform" | "response" | "error" | "ifLeft" | "ifRight" | "switchValue";
 type JsonConfigTarget = "transform" | "response" | "error" | "httpQuery" | "httpHeaders" | "httpBody" | "postgresParameters";
 type FlexibleConfigTarget = "ifLeft" | "ifRight" | "switchValue";
-
 const BASE_TRANSFORM_REFERENCE_SNIPPETS = [
   { label: "route.path", value: "route.path" },
   { label: "request.path", value: "request.path" },
@@ -127,7 +135,6 @@ const SWITCH_BRANCH_OPTIONS = [
   { title: "Case", value: "case" },
   { title: "Default", value: "default" },
 ];
-const ROUTE_FLOW_DRAG_MIME = "application/x-route-flow-node";
 const ROUTE_FLOW_NODE_WIDTH = 236;
 const ROUTE_FLOW_NODE_HEIGHT = 104;
 
@@ -717,44 +724,43 @@ function handleCanvasAuxClick(event: MouseEvent): void {
   }
 }
 
-function handlePaletteDragStart(event: DragEvent, nodeType: RouteFlowNodeType): void {
-  if (!canUsePreset(nodeType)) {
-    event.preventDefault();
-    return;
-  }
-
-  event.dataTransfer?.setData(ROUTE_FLOW_DRAG_MIME, nodeType);
-  event.dataTransfer?.setData("text/plain", nodeType);
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = "copy";
-  }
+function setPaletteDragState(element: HTMLElement, active: boolean): void {
+  element.classList.toggle("schema-drag-source", active);
 }
 
-function handleCanvasDragOver(event: DragEvent): void {
-  const dragTypes = Array.from(event.dataTransfer?.types ?? []);
-  if (!dragTypes.includes(ROUTE_FLOW_DRAG_MIME) && !dragTypes.includes("text/plain")) {
-    return;
-  }
-
-  event.preventDefault();
-  if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = "copy";
-  }
+function paletteDragBinding(
+  nodeType: RouteFlowNodeType,
+  title: string,
+): PragmaticDraggableBinding<Record<string, unknown>> {
+  return {
+    canDrag: canUsePreset(nodeType),
+    data: createRouteFlowPaletteDragPayload(nodeType) as unknown as Record<string, unknown>,
+    preview: {
+      eyebrow: "Flow node",
+      label: title,
+      tone: "node",
+    },
+    onDragStart: ({ element }) => {
+      setPaletteDragState(element, true);
+    },
+    onDrop: ({ element }) => {
+      setPaletteDragState(element, false);
+    },
+  };
 }
 
-function handleCanvasDrop(event: DragEvent): void {
-  const nodeType = event.dataTransfer?.getData(ROUTE_FLOW_DRAG_MIME) || event.dataTransfer?.getData("text/plain");
-  if (!isRouteFlowNodeType(nodeType)) {
+function handleCanvasDrop(sourceData: Record<string, unknown>, clientX: number, clientY: number): void {
+  const payload = getRouteFlowPaletteDragPayload(sourceData);
+  if (!payload) {
     return;
   }
 
-  event.preventDefault();
   const position = flowInstance.value?.screenToFlowCoordinate({
-    x: event.clientX,
-    y: event.clientY,
+    x: clientX,
+    y: clientY,
   });
 
-  addNode(nodeType, {
+  addNode(payload.nodeType, {
     position: position
       ? {
           x: position.x,
@@ -768,6 +774,14 @@ function handleCanvasDrop(event: DragEvent): void {
 function handleNodeDragStop(): void {
   hasManualLayout.value = true;
 }
+
+const canvasDropBinding = computed<PragmaticDropTargetBinding<Record<string, unknown>>>(() => ({
+  canDrop: ({ sourceData }) => getRouteFlowPaletteDragPayload(sourceData) !== null,
+  dropEffect: "copy",
+  onDrop: ({ clientX, clientY, sourceData }) => {
+    handleCanvasDrop(sourceData, clientX, clientY);
+  },
+}));
 
 function refreshInspectorDrafts(): void {
   const selectedNode = selectedCanvasNode.value;
@@ -1522,13 +1536,12 @@ onBeforeUnmount(() => {
           <v-btn
             v-for="preset in ROUTE_FLOW_NODE_PRESETS"
             :key="preset.type"
+            v-pragmatic-draggable="paletteDragBinding(preset.type, preset.title)"
             class="route-flow-editor__tool-btn"
             :color="preset.color"
             :disabled="!canUsePreset(preset.type)"
             :prepend-icon="preset.icon"
-            :draggable="canUsePreset(preset.type)"
             variant="tonal"
-            @dragstart="handlePaletteDragStart($event, preset.type)"
             @click="addNode(preset.type)"
           >
             {{ preset.title }}
@@ -1543,12 +1556,11 @@ onBeforeUnmount(() => {
       </v-sheet>
 
       <div
+        v-pragmatic-drop-target="canvasDropBinding"
         class="route-flow-editor__canvas-shell"
         :class="{ 'mt-4': !isFocusMode }"
         @mousedown.capture="handleCanvasMouseDown"
         @auxclick.prevent="handleCanvasAuxClick"
-        @dragover="handleCanvasDragOver"
-        @drop="handleCanvasDrop"
       >
         <VueFlow
           v-model:nodes="canvasNodes"
@@ -1598,13 +1610,12 @@ onBeforeUnmount(() => {
                   <v-btn
                     v-for="preset in focusCreatablePresets"
                     :key="preset.type"
+                    v-pragmatic-draggable="paletteDragBinding(preset.type, preset.title)"
                     class="route-flow-editor__tool-btn route-flow-editor__tool-btn--focus"
                     :color="preset.color"
                     :disabled="!canUsePreset(preset.type)"
                     :prepend-icon="preset.icon"
-                    :draggable="canUsePreset(preset.type)"
                     variant="tonal"
-                    @dragstart="handlePaletteDragStart($event, preset.type)"
                     @click="addNode(preset.type)"
                   >
                     {{ preset.title }}
@@ -1621,13 +1632,12 @@ onBeforeUnmount(() => {
                   <v-btn
                     v-for="preset in focusReusablePresets"
                     :key="preset.type"
+                    v-pragmatic-draggable="paletteDragBinding(preset.type, preset.title)"
                     class="route-flow-editor__tool-btn route-flow-editor__tool-btn--focus"
                     :color="preset.color"
                     :disabled="!canUsePreset(preset.type)"
                     :prepend-icon="preset.icon"
-                    :draggable="canUsePreset(preset.type)"
                     variant="tonal"
-                    @dragstart="handlePaletteDragStart($event, preset.type)"
                     @click="addNode(preset.type)"
                   >
                     {{ preset.title }}

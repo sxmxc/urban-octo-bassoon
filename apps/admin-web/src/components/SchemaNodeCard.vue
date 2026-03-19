@@ -1,7 +1,21 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { PALETTE_TYPES, isScalarNode, nodeLabel, valueTypeLabel, type BuilderNodeType, type BuilderScope, type SchemaBuilderNode } from "../schemaBuilder";
-import { setPillDragImage } from "../utils/dragGhost";
+import {
+  vPragmaticDraggable,
+  vPragmaticDropTarget,
+  type PragmaticDraggableBinding,
+  type PragmaticDropTargetBinding,
+} from "../utils/pragmaticDnd";
+import {
+  createSchemaNodeDragPayload,
+  getSchemaDragPayload,
+  isSchemaContainerDragPayload,
+  isSchemaValueLaneDragPayload,
+  type SchemaDragPayload,
+} from "../utils/schemaDragDrop";
+
+type SchemaDragData = Record<string, unknown>;
 
 const props = withDefaults(defineProps<{
   activeNodeId: string;
@@ -16,12 +30,11 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
-  dropContainer: [containerId: string];
-  dropRow: [nodeId: string];
-  dropValue: [nodeId: string];
+  dropContainer: [containerId: string, sourceData: SchemaDragPayload];
+  dropRow: [nodeId: string, sourceData: SchemaDragPayload];
+  dropValue: [nodeId: string, sourceData: SchemaDragPayload];
   insertNode: [targetId: string, placement: "before" | "container", nodeType: BuilderNodeType];
   select: [nodeId: string];
-  startDrag: [nodeId: string, event?: DragEvent];
   toggleCollapse: [nodeId: string];
 }>();
 
@@ -107,6 +120,83 @@ const insertOptions = computed(() => PALETTE_TYPES.map((item) => ({
   ...item,
   icon: paletteIconByType[item.type],
 })));
+const nodeDragBinding = computed<PragmaticDraggableBinding<SchemaDragData> | null>(() => {
+  if (props.root) {
+    return null;
+  }
+
+  return {
+    data: createSchemaNodeDragPayload(props.node.id) as unknown as SchemaDragData,
+    preview: {
+      eyebrow: props.node.type,
+      label: nodeLabel(props.node, Boolean(props.root)),
+      tone: "node",
+    },
+    onDragStart: ({ element }) => {
+      element.classList.add("schema-drag-source");
+    },
+    onDrop: ({ element }) => {
+      element.classList.remove("schema-drag-source");
+    },
+  };
+});
+const rowDropBinding = computed<PragmaticDropTargetBinding<SchemaDragData>>(() => ({
+  canDrop: ({ sourceData }) => isSchemaContainerDragPayload(getSchemaDragPayload(sourceData)),
+  dropEffect: ({ sourceData }) => getSchemaDragPayload(sourceData)?.kind === "node" ? "move" : "copy",
+  onDragEnter: () => {
+    isRowOver.value = true;
+  },
+  onDragLeave: () => {
+    isRowOver.value = false;
+  },
+  onDrop: ({ sourceData }) => {
+    isRowOver.value = false;
+    const payload = getSchemaDragPayload(sourceData);
+    if (!payload) {
+      return;
+    }
+
+    emit("dropRow", props.node.id, payload);
+  },
+}));
+const valueDropBinding = computed<PragmaticDropTargetBinding<SchemaDragData>>(() => ({
+  canDrop: ({ sourceData }) => isSchemaValueLaneDragPayload(getSchemaDragPayload(sourceData)),
+  dropEffect: "copy",
+  onDragEnter: () => {
+    isValueOver.value = true;
+  },
+  onDragLeave: () => {
+    isValueOver.value = false;
+  },
+  onDrop: ({ sourceData }) => {
+    isValueOver.value = false;
+    const payload = getSchemaDragPayload(sourceData);
+    if (!payload) {
+      return;
+    }
+
+    emit("dropValue", props.node.id, payload);
+  },
+}));
+const containerDropBinding = computed<PragmaticDropTargetBinding<SchemaDragData>>(() => ({
+  canDrop: ({ sourceData }) => isSchemaContainerDragPayload(getSchemaDragPayload(sourceData)),
+  dropEffect: ({ sourceData }) => getSchemaDragPayload(sourceData)?.kind === "node" ? "move" : "copy",
+  onDragEnter: () => {
+    isTailOver.value = true;
+  },
+  onDragLeave: () => {
+    isTailOver.value = false;
+  },
+  onDrop: ({ sourceData }) => {
+    isTailOver.value = false;
+    const payload = getSchemaDragPayload(sourceData);
+    if (!payload) {
+      return;
+    }
+
+    emit("dropContainer", props.node.id, payload);
+  },
+}));
 
 const paletteIconByType: Record<BuilderNodeType, string> = {
   array: "mdi-code-brackets",
@@ -117,53 +207,6 @@ const paletteIconByType: Record<BuilderNodeType, string> = {
   object: "mdi-code-braces",
   string: "mdi-format-letter-case",
 };
-
-function startDrag(event: DragEvent): void {
-  if (props.root) {
-    return;
-  }
-
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.dropEffect = "move";
-    event.dataTransfer.setData("text/plain", props.node.id);
-  }
-
-  const source = event.currentTarget;
-  if (source instanceof HTMLElement) {
-    source.classList.add("schema-node-pill-drag-source");
-    source.addEventListener("dragend", () => {
-      source.classList.remove("schema-node-pill-drag-source");
-    }, { once: true });
-  }
-
-  setPillDragImage(event, {
-    eyebrow: props.node.type,
-    label: nodeLabel(props.node, Boolean(props.root)),
-    tone: "node",
-  });
-
-  emit("startDrag", props.node.id, event);
-}
-
-function dropOnContainer(): void {
-  isTailOver.value = false;
-  emit("dropContainer", props.node.id);
-}
-
-function dropOnRow(): void {
-  isRowOver.value = false;
-  emit("dropRow", props.node.id);
-}
-
-function dropOnValue(): void {
-  isValueOver.value = false;
-  emit("dropValue", props.node.id);
-}
-
-function forwardStartDrag(nodeId: string, event?: DragEvent): void {
-  emit("startDrag", nodeId, event);
-}
 
 function insertFromMenu(placement: "before" | "container", nodeType: BuilderNodeType): void {
   if (placement === "before") {
@@ -194,6 +237,7 @@ function toggleCollapsed(): void {
       <v-menu v-model="rowMenuOpen" location="end center">
         <template #activator="{ props: menuProps }">
           <button
+            v-pragmatic-drop-target="rowDropBinding"
             v-bind="menuProps"
             class="schema-insert-anchor schema-insert-anchor-key"
             :class="{ 'schema-insert-anchor-active': isRowOver || rowMenuOpen }"
@@ -205,10 +249,6 @@ function toggleCollapsed(): void {
             :data-insert-target="node.id"
             type="button"
             @click.stop
-            @dragenter.prevent="isRowOver = true"
-            @dragleave.prevent="isRowOver = false"
-            @dragover.prevent
-            @drop.prevent="dropOnRow"
           >
             <v-icon icon="mdi-plus" size="16" />
           </button>
@@ -235,13 +275,12 @@ function toggleCollapsed(): void {
     <div class="schema-tree-row" :class="{ 'schema-tree-row-selected': isSelected, 'schema-tree-row-root': root }">
       <button
         v-if="!root"
+        v-pragmatic-draggable="nodeDragBinding"
         class="schema-node-drag-handle"
         :data-node-drag-handle="node.id"
         :aria-label="`Drag ${nodeLabel(node, Boolean(root))}`"
         :title="`Drag ${nodeLabel(node, Boolean(root))}`"
-        :draggable="true"
         type="button"
-        @dragstart.stop="startDrag"
       >
         <v-icon icon="mdi-drag" size="16" />
       </button>
@@ -300,6 +339,7 @@ function toggleCollapsed(): void {
 
       <button
         v-if="hasValueLane"
+        v-pragmatic-drop-target="valueDropBinding"
         class="schema-value-slot"
         :class="[valueModeClass, { 'schema-value-slot-active': isValueOver }]"
         :aria-label="valueDropTitle"
@@ -307,10 +347,6 @@ function toggleCollapsed(): void {
         data-drop-zone="value"
         :data-drop-target="node.id"
         type="button"
-        @dragenter.prevent="isValueOver = true"
-        @dragleave.prevent="isValueOver = false"
-        @dragover.prevent
-        @drop.prevent="dropOnValue"
       >
         <span class="schema-value-slot-mode">{{ valueModeLabel }}</span>
         <span class="schema-value-slot-label">{{ valueSlotLabel }}</span>
@@ -332,11 +368,10 @@ function toggleCollapsed(): void {
         :parent-type="node.type"
         :scope="scope"
         @insert-node="(targetId, placement, nodeType) => emit('insertNode', targetId, placement, nodeType)"
-        @drop-container="emit('dropContainer', $event)"
-        @drop-row="emit('dropRow', $event)"
-        @drop-value="emit('dropValue', $event)"
+        @drop-container="(containerId, sourceData) => emit('dropContainer', containerId, sourceData)"
+        @drop-row="(targetId, sourceData) => emit('dropRow', targetId, sourceData)"
+        @drop-value="(targetId, sourceData) => emit('dropValue', targetId, sourceData)"
         @select="emit('select', $event)"
-        @start-drag="forwardStartDrag"
         @toggle-collapse="emit('toggleCollapse', $event)"
       />
 
@@ -347,6 +382,7 @@ function toggleCollapsed(): void {
         <v-menu v-model="tailMenuOpen" location="end center">
           <template #activator="{ props: menuProps }">
             <button
+              v-pragmatic-drop-target="containerDropBinding"
               v-bind="menuProps"
               class="schema-insert-anchor schema-insert-anchor-key"
               :class="{ 'schema-insert-anchor-active': isTailOver || tailMenuOpen }"
@@ -358,10 +394,6 @@ function toggleCollapsed(): void {
               :data-insert-target="node.id"
               type="button"
               @click.stop
-              @dragenter.prevent="isTailOver = true"
-              @dragleave.prevent="isTailOver = false"
-              @dragover.prevent
-              @drop.prevent="dropOnContainer"
             >
               <v-icon icon="mdi-plus" size="16" />
             </button>
@@ -396,11 +428,10 @@ function toggleCollapsed(): void {
         :parent-type="node.type"
         :scope="scope"
         @insert-node="(targetId, placement, nodeType) => emit('insertNode', targetId, placement, nodeType)"
-        @drop-container="emit('dropContainer', $event)"
-        @drop-row="emit('dropRow', $event)"
-        @drop-value="emit('dropValue', $event)"
+        @drop-container="(containerId, sourceData) => emit('dropContainer', containerId, sourceData)"
+        @drop-row="(targetId, sourceData) => emit('dropRow', targetId, sourceData)"
+        @drop-value="(targetId, sourceData) => emit('dropValue', targetId, sourceData)"
         @select="emit('select', $event)"
-        @start-drag="forwardStartDrag"
         @toggle-collapse="emit('toggleCollapse', $event)"
       />
 
@@ -411,6 +442,7 @@ function toggleCollapsed(): void {
         <v-menu v-model="tailMenuOpen" location="end center">
           <template #activator="{ props: menuProps }">
             <button
+              v-pragmatic-drop-target="containerDropBinding"
               v-bind="menuProps"
               class="schema-insert-anchor schema-insert-anchor-key"
               :class="{ 'schema-insert-anchor-active': isTailOver || tailMenuOpen }"
@@ -422,10 +454,6 @@ function toggleCollapsed(): void {
               :data-insert-target="node.id"
               type="button"
               @click.stop
-              @dragenter.prevent="isTailOver = true"
-              @dragleave.prevent="isTailOver = false"
-              @dragover.prevent
-              @drop.prevent="dropOnContainer"
             >
               <v-icon icon="mdi-plus" size="16" />
             </button>

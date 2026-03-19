@@ -63,6 +63,7 @@ Already shipped:
 - a clearer `Test` journey and dedicated route tester that now separate admin contract previews from live/public requests and label live versus draft runtime state explicitly
 - Flow-tab inspector support for binding HTTP and Postgres nodes to saved shared connections
 - Flow-tab branch-aware logic editing for first-class `If` / `Switch` nodes
+- maintained drag-and-drop for the schema editor and Flow palette, replacing bespoke native `dataTransfer` wiring with shared drag-preview/drop-target infrastructure
 - shared public-route policy across OpenAPI, `/api/reference.json`, and legacy mock fallback so runtime-managed routes stay public only while they still have an active deployment
 - explicit disable-live workflow in the admin API and `Deploy` tab, which deactivates the active deployment without deleting route or implementation history
 - runtime-aware route deletion for both direct admin deletes and confirmed `replace_all` imports, including explicit cleanup of runtime history before the route row is removed
