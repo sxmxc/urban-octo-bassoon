@@ -125,7 +125,7 @@ For string identifiers, `format: uuid` is treated as the semantic `id` value typ
 
 Mode behavior:
 - `generate`: type-correct true random values.
-- `mocking`: type-correct values with a sharper Mockingbird tone, such as snarkier text, cheekier slugs/emails, sardonic company names, or longer quote/message copy that can gently roast the consumer.
+- `mocking`: type-correct values with a sharper Artificer tone, such as snarkier text, cheekier slugs/emails, sardonic company names, or longer quote/message copy that can gently roast the consumer.
 - `fixed`: static literal JSON returned exactly as configured.
 - If `x-mock.template` is present on a response `string` node, the node's base generated/fixed value is exposed as `{{value}}` and then wrapped with request-aware template tokens before the final string is returned.
 
@@ -139,7 +139,7 @@ Mode behavior:
 - Parameter authoring is intentionally limited to flat scalar/enum fields today; nested parameter objects, arrays, and advanced serialization styles are not modeled yet.
 
 ## Catalog bundle
-The admin import/export flow still uses a native Mockingbird JSON bundle for backup and environment sync.
+The admin import/export flow still uses a native Artificer JSON bundle for backup and environment sync.
 - Top-level bundle fields are `schema_version`, `product`, `exported_at`, and `endpoints`.
 - Each bundled endpoint stores the editable route contract, including request/response schemas and runtime simulation settings, but excludes DB-only fields such as `id`, `created_at`, and `updated_at`.
 - V1 imports match existing routes by normalized `method + path`; `slug` remains an internal field that can be de-duplicated during import.

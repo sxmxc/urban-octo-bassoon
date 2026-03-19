@@ -9,7 +9,7 @@ from app.openapi import get_openapi
 
 settings = Settings()
 
-app = FastAPI(title="Mockingbird", version=settings.app_version)
+app = FastAPI(title="Artificer API", version=settings.app_version)
 PUBLIC_CSP = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline'; "

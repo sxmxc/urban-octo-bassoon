@@ -45,7 +45,7 @@ async function handleSubmit(): Promise<void> {
         <v-card class="workspace-card auth-intro-card">
           <v-card-text class="pa-8 pa-sm-9">
             <div class="text-overline text-secondary">Admin access</div>
-            <div class="text-h3 font-weight-bold mt-2">Sign in to Mockingbird</div>
+            <div class="text-h3 font-weight-bold mt-2">Sign in to Artificer Studio</div>
             <div class="text-body-1 text-medium-emphasis mt-4 auth-support-copy">
               Manage routes, edit request and response schemas, and check the live output before you hand the route to someone else.
             </div>

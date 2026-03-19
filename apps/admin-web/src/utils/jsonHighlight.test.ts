@@ -5,7 +5,7 @@ import { highlightJson } from "./jsonHighlight";
 describe("highlightJson", () => {
   it("wraps keys and values in syntax token spans", () => {
     const html = highlightJson({
-      name: "Mockingbird",
+      name: "Artificer",
       count: 3,
       active: true,
       empty: null,

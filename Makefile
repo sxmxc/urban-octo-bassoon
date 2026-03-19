@@ -1,4 +1,4 @@
-# Makefile for Mockingbird
+# Makefile for Artificer
 
 .DEFAULT_GOAL := help
 

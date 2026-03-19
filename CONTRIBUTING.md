@@ -1,4 +1,4 @@
-# Contributing to Mockingbird
+# Contributing to Artificer
 
 Thanks for contributing! This project is designed to be friendly to both humans and AI agents. Please follow the lightweight conventions below.
 

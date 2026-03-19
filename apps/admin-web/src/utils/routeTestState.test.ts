@@ -77,6 +77,66 @@ function createDeployment(overrides: Partial<RouteDeployment> = {}): RouteDeploy
 }
 
 describe("buildRouteTestState", () => {
+  it("preserves backend published-live status when deployments are unavailable", () => {
+    const state = buildRouteTestState(
+      createEndpoint({
+        publication_status: {
+          code: "published_live",
+          label: "Published live",
+          tone: "success",
+          enabled: true,
+          is_public: true,
+          is_live: true,
+          uses_legacy_mock: false,
+          has_saved_implementation: true,
+          has_runtime_history: true,
+          has_deployment_history: true,
+          has_active_deployment: true,
+          active_deployment_environment: "production",
+          active_implementation_id: 4,
+          active_deployment_id: 4,
+        },
+      }),
+      createImplementation(),
+      [],
+    );
+
+    expect(state.liveMode).toBe("live_active");
+    expect(state.liveStatusLabel).toBe("Published live");
+    expect(state.liveHeadline).toBe("Implementation 4 is live");
+    expect(state.draftHeadline).toBe("Draft v3 is ahead of live");
+  });
+
+  it("preserves deployment-history status when deployments are unavailable", () => {
+    const state = buildRouteTestState(
+      createEndpoint({
+        publication_status: {
+          code: "live_disabled",
+          label: "Live disabled",
+          tone: "warning",
+          enabled: true,
+          is_public: false,
+          is_live: false,
+          uses_legacy_mock: false,
+          has_saved_implementation: true,
+          has_runtime_history: true,
+          has_deployment_history: true,
+          has_active_deployment: false,
+          active_deployment_environment: null,
+          active_implementation_id: null,
+          active_deployment_id: null,
+        },
+      }),
+      createImplementation(),
+      [],
+    );
+
+    expect(state.liveMode).toBe("live_disabled");
+    expect(state.liveStatusLabel).toBe("Live disabled");
+    expect(state.liveHeadline).toBe("No active deployment");
+    expect(state.draftHeadline).toBe("Draft v3 is saved");
+  });
+
   it("treats an active deployment as live even when the cached publication status is still draft only", () => {
     const state = buildRouteTestState(
       createEndpoint({

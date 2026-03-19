@@ -18,6 +18,9 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [ ] (none)
 
 ## Done
+- [x] Redirect the API root `/` to `/status` while keeping `/api` empty
+- [x] Standardize the platform brand around Artificer, Artificer API, and Artificer Studio, including the shared `icon.svg` logo asset and renamed repo/image references
+- [x] Preserve backend live/deployment-history status when deployment metadata is unavailable in admin runtime views
 - [x] Restrict `/api/health` migration cleanup to the legacy seeded route and keep reserved-path bundle imports as row-level import errors
 - [x] Derive admin live-mode status from current deployments/implementation data instead of stale cached publication status after publish/unpublish
 - [x] Sync the repository docs with backend-driven publication state, `/status` health, `/api/health`, and Swagger/ReDoc surfaces
@@ -59,7 +62,7 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [x] Migrate the admin UI to Vue + Vuetify with a dedicated schema editor page
 - [x] Add search and filtering to the endpoint catalog
 - [x] Add latency/error simulation controls to the admin settings UI
-- [x] Add the public Mockingbird landing page with a live endpoint quick reference
+- [x] Add the original branded public landing page with a live endpoint quick reference
 - [x] Add mocking-style random generation alongside static and true-random schema values
 - [x] Fix schema canvas selection so the inspector follows nested node clicks
 - [x] Keep Dockerized frontend dependencies isolated from host `node_modules`
@@ -74,7 +77,7 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [x] Add endpoint duplication support in the UI
 - [x] Keep the endpoint workspace shell mounted while only the right-hand record pane transitions between records
 - [x] Make the endpoint catalog rail scroll independently with client-side pagination
-- [x] Update repository and deployment references after the GitHub rename to Mockingbird
+- [x] Update repository and deployment references after the GitHub rename to Artificer
 - [x] Fix CI Docker smoke test bootstrap when `.env` is absent in GitHub Actions
 - [x] Add a dedicated long-text value type for schema-studio string fields
 - [x] Simplify the admin sign-in page with friendlier copy and a single-column intro/form flow
@@ -99,7 +102,7 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [x] Switch the route form tags input to a chip-style tag box, move the admin UI to compact Vuetify density defaults, and make disabled route badges explicitly error-colored
 - [x] Stop the route-catalog search field from vertically stretching on sparse paginated pages
 - [x] Hide route slugs from the admin form and auto-generate backend bookkeeping slugs from route names
-- [x] Restore the public hero warning and sharpen mocking-mode copy so the landing page and generated text feel more like Mockingbird
+- [x] Restore the public hero warning and sharpen mocking-mode copy so the landing page and generated text feel more like Artificer
 - [x] Add syntax-highlighted, scrollable JSON panes with inline copy actions to the schema-studio live preview rail
 - [x] Add a real local production-like Compose mode so a checked-out repo can swap from dev targets to runtime targets
 - [x] Preserve scalar response field types and constraints when linking route-value path parameters in the schema studio

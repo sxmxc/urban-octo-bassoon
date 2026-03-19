@@ -36,7 +36,7 @@ function sampleStringValue(schema: JsonObject): string {
     return "person@example.com";
   }
   if (format === "uri" || format === "url") {
-    return "https://mockingbird.test/example";
+    return "https://artificer.test/example";
   }
   if (format === "date") {
     return "2026-03-17";

@@ -104,7 +104,7 @@ from app.time_utils import utc_now
 
 
 router = APIRouter()
-ENDPOINT_BUNDLE_PRODUCT = "Mockingbird"
+ENDPOINT_BUNDLE_PRODUCT = "Artificer"
 ENDPOINT_BUNDLE_SCHEMA_VERSION = 1
 SLUG_SEPARATOR_PATTERN = re.compile(r"[^a-z0-9]+")
 
@@ -721,13 +721,13 @@ def update_dashboard_user(
     if payload.is_active is False and user.is_active and current_role == AdminRole.superuser and count_active_superusers(session, exclude_user_id=user.id) == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mockingbird must keep at least one active superuser.",
+            detail="Artificer Studio must keep at least one active superuser.",
         )
 
     if requested_role != AdminRole.superuser and current_role == AdminRole.superuser and user.is_active and count_active_superusers(session, exclude_user_id=user.id) == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mockingbird must keep at least one active superuser.",
+            detail="Artificer Studio must keep at least one active superuser.",
         )
 
     try:
@@ -775,7 +775,7 @@ def delete_dashboard_user(
     if user.is_active and resolve_admin_role(user) == AdminRole.superuser and count_active_superusers(session, exclude_user_id=user.id) == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mockingbird must keep at least one active superuser.",
+            detail="Artificer Studio must keep at least one active superuser.",
         )
 
     delete_admin_user(session, user)

@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, inspect, select, text
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-TEST_DB_PATH = Path(tempfile.gettempdir()) / "mockingbird-test.db"
+TEST_DB_PATH = Path(tempfile.gettempdir()) / "artificer-test.db"
 if TEST_DB_PATH.exists():
     TEST_DB_PATH.unlink()
 os.environ.setdefault("DATABASE_URL", f"sqlite:///{TEST_DB_PATH}")
@@ -1383,7 +1383,7 @@ def test_runtime_postgres_query_connector_executes_and_records_steps(empty_db, m
             "connector_type": "postgres",
             "description": "Read-only reporting replica",
             "config": {
-                "dsn": "postgresql://readonly:secret@db.internal:5432/mockingbird",
+                "dsn": "postgresql://readonly:secret@db.internal:5432/artificer",
             },
             "is_active": True,
         },
@@ -1453,7 +1453,7 @@ def test_runtime_postgres_query_connector_executes_and_records_steps(empty_db, m
 
     assert called == {
         "connection_config": {
-            "dsn": "postgresql://readonly:secret@db.internal:5432/mockingbird",
+            "dsn": "postgresql://readonly:secret@db.internal:5432/artificer",
         },
         "sql": "select order_id, status from orders where order_id = %(order_id)s",
         "parameters": {"order_id": "ord_123"},
@@ -1761,9 +1761,9 @@ def test_admin_endpoint_reads_include_runtime_aware_publication_status(empty_db)
 def test_public_status_page_reference_and_brand_asset(seeded_db):
     client = TestClient(app)
 
-    root = client.get("/")
-    assert root.status_code == 204
-    assert root.text == ""
+    root = client.get("/", follow_redirects=False)
+    assert root.status_code == 307
+    assert root.headers["location"] == "/status"
 
     api_root = client.get("/api")
     assert api_root.status_code == 204
@@ -1771,7 +1771,7 @@ def test_public_status_page_reference_and_brand_asset(seeded_db):
 
     status_page = client.get("/status")
     assert status_page.status_code == 200
-    assert "Mockingbird API status." in status_page.text
+    assert "Artificer API status." in status_page.text
     assert "Dependency health" in status_page.text
     assert "/api/reference.json" in status_page.text
     assert "/openapi.json" in status_page.text
@@ -1788,7 +1788,7 @@ def test_public_status_page_reference_and_brand_asset(seeded_db):
     reference = client.get("/api/reference.json")
     assert reference.status_code == 200
     payload = reference.json()
-    assert payload["product_name"] == "Mockingbird"
+    assert payload["product_name"] == "Artificer API"
     assert payload["endpoint_count"] >= 1
     assert "/api/health" not in {endpoint["path"] for endpoint in payload["endpoints"]}
     assert any(endpoint["sample_response"] is not None for endpoint in payload["endpoints"])
@@ -1802,7 +1802,7 @@ def test_public_status_page_reference_and_brand_asset(seeded_db):
     assert get_endpoint["sample_request"] is None
     assert get_endpoint["publication_status"]["label"]
 
-    asset = client.get("/static/mockingbird-icon.svg")
+    asset = client.get("/static/icon.svg")
     assert asset.status_code == 200
     assert asset.headers["content-type"].startswith("image/svg+xml")
 
@@ -1934,7 +1934,9 @@ def test_public_status_page_escapes_embedded_reference_payload(empty_db):
 def test_security_headers_are_present_on_public_and_api_responses(seeded_db):
     client = TestClient(app)
 
-    root = client.get("/")
+    root = client.get("/", follow_redirects=False)
+    assert root.status_code == 307
+    assert root.headers["location"] == "/status"
     assert root.headers["x-content-type-options"] == "nosniff"
     assert root.headers["x-frame-options"] == "DENY"
     assert root.headers["referrer-policy"] == "strict-origin-when-cross-origin"
@@ -2868,7 +2870,7 @@ def test_preview_endpoint_is_seeded_and_type_correct(empty_db):
     assert isinstance(first_preview["firstName"], str) and first_preview["firstName"]
     assert isinstance(first_preview["displayName"], str) and " " in first_preview["displayName"]
     assert isinstance(first_preview["quote"], str) and len(first_preview["quote"]) > 64
-    assert first_preview["contact"].endswith("@mockingbird.test")
+    assert first_preview["contact"].endswith("@artificer.test")
     assert isinstance(first_preview["passwordHash"], str)
     assert first_preview["passwordHash"].startswith("$2b$12$")
     assert len(first_preview["passwordHash"]) == 60
@@ -3405,7 +3407,7 @@ def test_admin_can_export_endpoint_bundle(empty_db):
 
     bundle = export_response.json()
     assert bundle["schema_version"] == 1
-    assert bundle["product"] == "Mockingbird"
+    assert bundle["product"] == "Artificer"
     assert len(bundle["endpoints"]) == 1
 
     exported_endpoint = bundle["endpoints"][0]
@@ -3496,7 +3498,7 @@ def test_admin_endpoint_import_supports_upsert_dry_run_and_apply(empty_db):
     bundle_payload = {
         "bundle": {
             "schema_version": 1,
-            "product": "Mockingbird",
+            "product": "Artificer",
             "exported_at": "2026-03-17T00:00:00Z",
             "endpoints": [
                 {
@@ -3661,7 +3663,7 @@ def test_admin_endpoint_import_reports_reserved_health_routes_as_row_errors(empt
         json={
             "bundle": {
                 "schema_version": 1,
-                "product": "Mockingbird",
+                "product": "Artificer",
                 "exported_at": "2026-03-19T00:00:00Z",
                 "endpoints": [
                     {
@@ -3763,7 +3765,7 @@ def test_admin_endpoint_import_replace_all_requires_confirmation_and_deletes_mis
     replace_bundle = {
         "bundle": {
             "schema_version": 1,
-            "product": "Mockingbird",
+            "product": "Artificer",
             "exported_at": "2026-03-17T00:00:00Z",
             "endpoints": [
                 {
@@ -3909,7 +3911,7 @@ def test_admin_endpoint_import_replace_all_deletes_runtime_history_for_removed_r
         json={
             "bundle": {
                 "schema_version": 1,
-                "product": "Mockingbird",
+                "product": "Artificer",
                 "exported_at": "2026-03-19T00:00:00Z",
                 "endpoints": [
                     {
@@ -3984,7 +3986,7 @@ def test_admin_endpoint_import_plans_against_catalogs_beyond_the_first_thousand_
     bundle = {
         "bundle": {
             "schema_version": 1,
-            "product": "Mockingbird",
+            "product": "Artificer",
             "exported_at": "2026-03-17T00:00:00Z",
             "endpoints": [
                 {

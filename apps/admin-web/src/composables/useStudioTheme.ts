@@ -13,7 +13,7 @@ function resolveDefaultMode(): StudioThemeMode {
 }
 
 const storage = createStorage({
-  prefix: "mockingbird:",
+  prefix: "artificer:",
 });
 
 const storedMode = storage.get<StudioThemeMode>("admin-theme", resolveDefaultMode());

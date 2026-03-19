@@ -116,6 +116,37 @@ export function resolveRuntimeRoutePublicationStatus(
     };
   }
 
+  if (hasSavedImplementation && runtimeDeployments.length === 0) {
+    if (publicationStatus.code === "published_live" || publicationStatus.code === "live_disabled") {
+      return {
+        ...publicationStatus,
+        has_saved_implementation: hasSavedImplementation,
+        has_runtime_history: hasRuntimeHistory,
+        has_deployment_history: publicationStatus.has_deployment_history || publicationStatus.code === "published_live",
+      };
+    }
+
+    if (publicationStatus.has_deployment_history) {
+      return {
+        ...publicationStatus,
+        code: "live_disabled",
+        label: "Live disabled",
+        tone: "warning",
+        enabled: true,
+        is_public: false,
+        is_live: false,
+        uses_legacy_mock: false,
+        has_saved_implementation: hasSavedImplementation,
+        has_runtime_history: hasRuntimeHistory,
+        has_deployment_history: true,
+        has_active_deployment: false,
+        active_deployment_environment: null,
+        active_implementation_id: null,
+        active_deployment_id: null,
+      };
+    }
+  }
+
   if (currentImplementation?.id !== null && currentImplementation?.id !== undefined) {
     return {
       ...publicationStatus,

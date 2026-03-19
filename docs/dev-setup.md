@@ -34,7 +34,7 @@ If you want to run the checked-out repo in a production-like local mode instead 
 make up-prod-local
 ```
 
-That command uses [docker-compose.prod-local.yml](/home/devadmin/projects/urban-octo-bassoon/docker-compose.prod-local.yml), which:
+That command uses [docker-compose.prod-local.yml](/home/devadmin/projects/artificer/docker-compose.prod-local.yml), which:
 
 - builds the Dockerfiles' `runtime` targets from your local source tree
 - starts the API through `start.prod.sh` without `uvicorn --reload`

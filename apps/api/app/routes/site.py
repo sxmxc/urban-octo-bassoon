@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import Session
 
 from app.db import get_session, session_scope
@@ -18,7 +18,7 @@ from app.time_utils import utc_now
 router = APIRouter()
 
 REFRESH_INTERVAL_MS = 12000
-BRAND_ASSET_PATH = Path(__file__).resolve().parents[2] / "static" / "mockingbird-icon.svg"
+BRAND_ASSET_PATH = Path(__file__).resolve().parents[2] / "static" / "icon.svg"
 METHOD_ORDER = {
     "GET": 0,
     "POST": 1,
@@ -37,12 +37,12 @@ STATUS_TEMPLATE = """
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Mockingbird | API Status</title>
+    <title>Artificer API | Status</title>
     <meta
       name="description"
-      content="Mockingbird API status, current public route availability, and live reference data."
+      content="Artificer API status, current public route availability, and live reference data."
     />
-    <link rel="icon" type="image/svg+xml" href="/static/mockingbird-icon.svg" />
+    <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css"
@@ -50,7 +50,7 @@ STATUS_TEMPLATE = """
     <script>
       (() => {
         try {
-          const storageKey = "mockingbird-public-theme";
+          const storageKey = "artificer-api-public-theme";
           const storedTheme = window.localStorage.getItem(storageKey);
           const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
           document.documentElement.dataset.theme = storedTheme || (prefersDark ? "dark" : "light");
@@ -1293,9 +1293,9 @@ STATUS_TEMPLATE = """
           <div class="topbar-inner">
             <div class="navbar-brand">
               <a class="navbar-item brand-lockup" href="#top">
-                <span class="brand-mark"><img src="/static/mockingbird-icon.svg" alt="Mockingbird logo" /></span>
+                <span class="brand-mark"><img src="/static/icon.svg" alt="Artificer logo" /></span>
                 <span>
-                  <span class="brand-title">Mockingbird</span>
+                  <span class="brand-title">Artificer</span>
                   <span class="brand-kicker">API status</span>
                 </span>
               </a>
@@ -1339,7 +1339,7 @@ STATUS_TEMPLATE = """
           <div class="reference-header">
             <div>
               <div class="eyebrow">API status</div>
-              <h1 class="section-title">Mockingbird API status.</h1>
+              <h1 class="section-title">Artificer API status.</h1>
               <p class="section-description">
                 Dependency health, public contract links, and route publication state in one place.
               </p>
@@ -1487,7 +1487,7 @@ STATUS_TEMPLATE = """
       </main>
 
       <footer class="footer-shell">
-        <span>Mockingbird public API</span>
+        <span>Artificer API</span>
         <span>OpenAPI at <code>/openapi.json</code></span>
       </footer>
     </div>
@@ -1541,7 +1541,7 @@ STATUS_TEMPLATE = """
         }
       }
 
-      const themeStorageKey = "mockingbird-public-theme";
+      const themeStorageKey = "artificer-api-public-theme";
       const initialReference = readInitialPayload("initial-reference-data", "reference");
       const initialHealth = readInitialPayload("initial-health-data", "health");
       const refreshIntervalMs = __REFRESH_INTERVAL_MS__;
@@ -2341,7 +2341,7 @@ def _build_reference(session: Session) -> dict:
 
 def _empty_reference_payload() -> dict:
     return PublicReferenceResponse(
-        product_name="Mockingbird",
+        product_name="Artificer API",
         description="Public reference data is temporarily unavailable.",
         endpoint_count=0,
         refreshed_at=utc_now(),
@@ -2397,7 +2397,7 @@ def _render_status_page(reference_payload: dict, health_payload: dict) -> str:
 @router.get("/", include_in_schema=False)
 @router.head("/", include_in_schema=False)
 def root_page() -> Response:
-    return Response(status_code=204, headers={"Cache-Control": "no-store"})
+    return RedirectResponse(url="/status", status_code=307, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/api", include_in_schema=False)
@@ -2414,8 +2414,8 @@ def status_page() -> HTMLResponse:
     return HTMLResponse(content=_render_status_page(reference_payload, health_payload), headers={"Cache-Control": "no-store"})
 
 
-@router.get("/assets/mockingbird-mark.svg", include_in_schema=False)
-def mockingbird_mark() -> Response:
+@router.get("/assets/icon.svg", include_in_schema=False)
+def brand_icon() -> Response:
     if not BRAND_ASSET_PATH.exists():
         raise HTTPException(status_code=404, detail="Brand asset not found")
 

@@ -9,7 +9,7 @@ from app.services.route_status import build_route_publication_status, load_route
 from app.time_utils import utc_now
 
 
-PRODUCT_NAME = "Mockingbird"
+PRODUCT_NAME = "Artificer API"
 PRODUCT_DESCRIPTION = (
     "A route-first API platform whose public routes, samples, and OpenAPI reference stay aligned with active"
     " deployments plus legacy routes that have not entered the live runtime yet."

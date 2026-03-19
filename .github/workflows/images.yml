@@ -29,9 +29,11 @@ jobs:
       matrix:
         include:
           - id: api
+            image_name: artificer-api
             context: apps/api
             file: apps/api/Dockerfile
-          - id: admin-web
+          - id: studio
+            image_name: artificer-studio
             context: apps/admin-web
             file: apps/admin-web/Dockerfile
     steps:
@@ -46,11 +48,10 @@ jobs:
       - name: Compute image settings
         id: vars
         env:
-          IMAGE_ID: ${{ matrix.id }}
+          IMAGE_NAME: ${{ matrix.image_name }}
         run: |
           owner="$(printf '%s' "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
-          repo="$(printf '%s' "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')"
-          echo "image=ghcr.io/${owner}/${repo}-${IMAGE_ID}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${owner}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
 
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             echo "platforms=linux/amd64" >> "$GITHUB_OUTPUT"

@@ -157,8 +157,8 @@ router.beforeEach(async (to) => {
 
 router.afterEach((to, from) => {
   if (typeof document !== "undefined") {
-    const pageTitle = typeof to.meta.title === "string" ? to.meta.title : "Mockingbird Admin";
-    document.title = `Mockingbird Admin | ${pageTitle}`;
+    const pageTitle = typeof to.meta.title === "string" ? to.meta.title : "Artificer Studio";
+    document.title = `Artificer Studio | ${pageTitle}`;
 
     const nextShell = typeof to.meta.transitionShell === "string" ? to.meta.transitionShell : "";
     const previousShell = typeof from.meta.transitionShell === "string" ? from.meta.transitionShell : "";

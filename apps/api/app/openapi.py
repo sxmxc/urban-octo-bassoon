@@ -17,7 +17,7 @@ from app.services.schema_contract import (
 
 BODY_METHODS = {"post", "put", "patch"}
 OPENAPI_DESCRIPTION = (
-    "Mockingbird publishes a live OpenAPI document generated from active deployments plus legacy routes that have"
+    "Artificer API publishes a live OpenAPI document generated from active deployments plus legacy routes that have"
     " not entered the live runtime yet."
 )
 
@@ -127,7 +127,7 @@ def build_public_openapi_document(
     openapi: Dict[str, Any] = {
         "openapi": "3.0.3",
         "info": {
-            "title": title or "Mock API",
+            "title": title or "Artificer API",
             "version": version or "0.0.0",
             "description": OPENAPI_DESCRIPTION,
         },
@@ -155,7 +155,7 @@ def get_openapi(
         endpoints = list_public_endpoints(session, limit=1000)
 
     return build_public_openapi_document(
-        title=app.title or "Mock API",
+        title=app.title or "Artificer API",
         version=app.version or "0.0.0",
         endpoints=endpoints,
     )

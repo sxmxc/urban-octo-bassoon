@@ -1,15 +1,15 @@
-# Mockingbird
+# Artificer
 
-[![CI](https://github.com/sxmxc/urban-octo-bassoon/actions/workflows/ci.yml/badge.svg)](https://github.com/sxmxc/urban-octo-bassoon/actions/workflows/ci.yml)
-[![Container Images](https://github.com/sxmxc/urban-octo-bassoon/actions/workflows/images.yml/badge.svg)](https://github.com/sxmxc/urban-octo-bassoon/actions/workflows/images.yml)
+[![CI](https://github.com/sxmxc/artificer/actions/workflows/ci.yml/badge.svg)](https://github.com/sxmxc/artificer/actions/workflows/ci.yml)
+[![Container Images](https://github.com/sxmxc/artificer/actions/workflows/images.yml/badge.svg)](https://github.com/sxmxc/artificer/actions/workflows/images.yml)
 
-A Docker-first, route-first API platform for designing, testing, publishing, and eventually operating configurable API routes through a dedicated admin console. This fork is evolving upstream Mockingbird toward a clearer split between public contract authoring, live flow implementations, deployment history, and execution tracing.
+Artificer is a Docker-first, route-first API platform for designing, testing, publishing, and operating configurable API routes through a dedicated control plane. The platform is split into Artificer API for the public/runtime surface and Artificer Studio for the private admin experience.
 
 The current system already includes a live public API status page, dynamic OpenAPI, a private admin dashboard, and the first deployment-backed runtime scaffolding for published route implementations. The older schema-driven mock generator still powers previews, examples, and fallback behavior while the live runtime grows into the primary execution path.
 
 ## 🧭 Fork Status
 
-This repository is a fork of the upstream Mockingbird work and is now being steered toward:
+This repository is now being steered toward:
 
 - a route-first API platform instead of a mock-only editor
 - explicit `Overview`, `Contract`, `Flow`, `Test`, and `Deploy` workflows
@@ -29,7 +29,7 @@ make up
 3. Open the product surfaces:
 
 - Public API status page: http://localhost:8000/status
-- Admin dashboard: http://localhost:3000
+- Artificer Studio: http://localhost:3000
 - OpenAPI JSON: http://localhost:8000/openapi.json
 - FastAPI docs: http://localhost:8000/docs and http://localhost:8000/redoc
 
@@ -69,7 +69,7 @@ make clean-prod-local
 - **Deployment-backed runtime foundation**: draft route implementations, deployments, execution traces, shared connections, and the first compiled in-memory route registry are now part of the backend foundation.
 - **Flow editor foundation**: the admin UI includes a Vue Flow-based authoring surface for live route implementations, with starter runtime nodes, branching, connector nodes, and a focused full-editor mode.
 - **Preview/examples engine**: schema-driven sample generation still powers route previews, examples, and legacy mock behavior during the transition to fully live implementations.
-- **Public API status page**: `/status` renders a Bulma-based API status surface with dependency-by-dependency health checks, backend-owned route publication-state badges, quick-reference table filtering, pagination, request/response example modals for body-based routes, and a light/dark theme toggle, while `/` and `/api` return no content.
+- **Public API status page**: `/status` renders a Bulma-based API status surface with dependency-by-dependency health checks, backend-owned route publication-state badges, quick-reference table filtering, pagination, request/response example modals for body-based routes, and a light/dark theme toggle, while `/` redirects there and `/api` returns no content.
 - **System health endpoint**: `/api/health` is now a system-owned health check that reports overall status plus dependency-by-dependency checks for the API process, database, deployment registry, public reference generation, and OpenAPI generation.
 - **Live OpenAPI**: `/openapi.json` reflects the active route catalog.
 - **Admin API**: bearer-session admin routes manage endpoint definitions, route implementations, deployments, connections, execution history, and dashboard accounts in Postgres.
@@ -103,7 +103,7 @@ This fork is not trying to become a generic workflow builder. The core model rem
 - GitHub Actions CI now runs backend tests, frontend lint/test/build, and a Docker Compose smoke test on `main` pushes and pull requests.
 - Runtime container images are built from dedicated `runtime` Docker targets rather than the local hot-reload targets used by `make up`.
 - The image workflow validates runtime images on pull requests and publishes multi-arch `linux/amd64` + `linux/arm64` images to GHCR on `main` and `v*` tags.
-- Release tags follow `ghcr.io/<owner>/<repo>-api` and `ghcr.io/<owner>/<repo>-admin-web` with:
+- Release tags follow `ghcr.io/<owner>/artificer-api` and `ghcr.io/<owner>/artificer-studio` with:
   - `vX.Y.Z`, `X.Y`, `X`, and `latest` for semver tags
   - branch, `edge`, and `sha-<commit>` tags for default-branch builds
 - Each image build also uploads metadata artifacts and provenance so digests/tags are easy to inspect in Actions.
@@ -123,12 +123,12 @@ See `docs/ci-cd.md` for the release workflow, image tag rules, and runtime envir
 ## 📚 Documentation
 
 - Canonical docs live in this repo: [`README.md`](README.md) and [`docs/`](docs/)
-- The practical user/developer handbook lives in the [GitHub Wiki](https://github.com/sxmxc/urban-octo-bassoon/wiki)
+- The practical user/developer handbook lives in the [GitHub Wiki](https://github.com/sxmxc/artificer/wiki)
 - The implementation handoff / platform direction doc lives in [`docs/roadmap.md`](docs/roadmap.md)
 
 ## 🐳 Image-only Compose Example
 
-If you want to run Mockingbird without cloning the full repo, start from:
+If you want to run Artificer without cloning the full repo, start from:
 
 - `deploy/docker-compose.ghcr.yml`
 - `deploy/.env.ghcr.example`
@@ -136,11 +136,11 @@ If you want to run Mockingbird without cloning the full repo, start from:
 Those files default to:
 
 - `${IMAGE_REPOSITORY}-api`
-- `${IMAGE_REPOSITORY}-admin-web`
+- `${IMAGE_REPOSITORY}-studio`
 
 The current fork ships with:
 
-- `IMAGE_REPOSITORY=ghcr.io/sxmxc/urban-octo-bassoon`
+- `IMAGE_REPOSITORY=ghcr.io/sxmxc/artificer`
 
 The default `IMAGE_TAG=edge` tracks the latest default-branch publish. For release deployments, prefer an explicit tag such as `IMAGE_TAG=1.2.3`.
 

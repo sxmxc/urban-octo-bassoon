@@ -21,13 +21,13 @@
 
 Published image names:
 
-- `ghcr.io/<owner>/<repo>-api`
-- `ghcr.io/<owner>/<repo>-admin-web`
+- `ghcr.io/<owner>/artificer-api`
+- `ghcr.io/<owner>/artificer-studio`
 
 For this repo, that resolves to:
 
-- `ghcr.io/sxmxc/urban-octo-bassoon-api`
-- `ghcr.io/sxmxc/urban-octo-bassoon-admin-web`
+- `ghcr.io/sxmxc/artificer-api`
+- `ghcr.io/sxmxc/artificer-studio`
 
 ## Tagging and versioning
 

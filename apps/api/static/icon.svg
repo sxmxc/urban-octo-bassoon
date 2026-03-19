@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Artificer icon</title>
+  <desc id="desc">A geometric Artificer mark with a stylized A and forge spark.</desc>
+  <defs>
+    <linearGradient id="artificer-bg" x1="18" y1="14" x2="112" y2="114" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#17384f" />
+      <stop offset="0.55" stop-color="#245f7c" />
+      <stop offset="1" stop-color="#d88949" />
+    </linearGradient>
+    <linearGradient id="artificer-glow" x1="38" y1="34" x2="96" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff8ef" stop-opacity="0.96" />
+      <stop offset="1" stop-color="#fde0c1" stop-opacity="0.9" />
+    </linearGradient>
+  </defs>
+  <rect x="12" y="12" width="104" height="104" rx="28" fill="url(#artificer-bg)" />
+  <path
+    d="M39 95 L59 38 Q61 31 64 31 Q67 31 69 38 L89 95"
+    fill="none"
+    stroke="url(#artificer-glow)"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="12"
+  />
+  <path
+    d="M51 75 H77"
+    fill="none"
+    stroke="#fff6ea"
+    stroke-linecap="round"
+    stroke-width="10"
+  />
+  <path
+    d="M93 27 L97 35 L105 39 L97 43 L93 51 L89 43 L81 39 L89 35 Z"
+    fill="#ffd08a"
+  />
+  <circle cx="94" cy="39" r="2.8" fill="#fff9ef" />
+</svg>

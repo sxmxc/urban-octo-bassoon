@@ -711,7 +711,7 @@ function toggleConnectionActive(connection: Connection): void {
                   v-model="formState.database"
                   density="compact"
                   label="Database"
-                  placeholder="mockingbird"
+                  placeholder="artificer"
                   variant="outlined"
                 />
               </v-col>

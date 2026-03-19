@@ -149,7 +149,7 @@ def normalize_optional_avatar_url(avatar_url: str | None) -> str | None:
 
 
 def build_gravatar_url(seed: str | None) -> str:
-    normalized_seed = (seed or "mockingbird").strip().lower() or "mockingbird"
+    normalized_seed = (seed or "artificer").strip().lower() or "artificer"
     digest = hashlib.md5(normalized_seed.encode("utf-8")).hexdigest()
     return f"https://www.gravatar.com/avatar/{digest}?d=identicon&s=160"
 

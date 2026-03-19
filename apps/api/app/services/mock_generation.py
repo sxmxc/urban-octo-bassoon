@@ -301,7 +301,7 @@ def _generate_string(schema: dict[str, Any], context: GenerationContext) -> str:
         return str(context.rng.choice(schema["enum"]))
 
     if mocking_mode and generator == "email":
-        value = f"{_mocking_slug(context, 2).replace('-', '.')}@mockingbird.test"
+        value = f"{_mocking_slug(context, 2).replace('-', '.')}@artificer.test"
     elif mocking_mode and generator == "username":
         value = f"{context.rng.choice(MOCKING_FIRST_NAMES).lower()}.{context.rng.choice(MOCKING_LAST_NAMES).lower()}"
     elif mocking_mode and generator == "password":
@@ -311,7 +311,7 @@ def _generate_string(schema: dict[str, Any], context: GenerationContext) -> str:
     elif generator == "verb":
         value = context.rng.choice(MOCKING_SYSTEM_VERBS)
     elif mocking_mode and generator == "url":
-        value = f"https://mockingbird.test/{_mocking_slug(context, 3)}"
+        value = f"https://artificer.test/{_mocking_slug(context, 3)}"
     elif generator == "file_name":
         value = _mock_file_name(context)
     elif generator == "mime_type":

@@ -26,8 +26,8 @@ import type {
   RouteImplementationPayload,
 } from "../types/endpoints";
 
-const REMEMBERED_SESSION_KEY = "mockingbird.admin-remembered-session";
-const ACTIVE_SESSION_KEY = "mockingbird.admin-active-session";
+const REMEMBERED_SESSION_KEY = "artificer.studio-remembered-session";
+const ACTIVE_SESSION_KEY = "artificer.studio-active-session";
 
 interface RequestOptions {
   body?: string;

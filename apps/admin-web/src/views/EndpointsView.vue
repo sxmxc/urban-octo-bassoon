@@ -1141,7 +1141,7 @@ async function exportRoutes(): Promise<void> {
       const link = document.createElement("a");
       const exportDate = bundle.exported_at ? bundle.exported_at.slice(0, 10) : new Date().toISOString().slice(0, 10);
       link.href = url;
-      link.download = `mockingbird-endpoints-${exportDate}.json`;
+      link.download = `artificer-endpoints-${exportDate}.json`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -1739,7 +1739,7 @@ const activeTitle = computed(() => {
       <v-card class="workspace-card">
         <v-card-item>
           <v-card-title>Import routes</v-card-title>
-          <v-card-subtitle>Preview a native Mockingbird bundle before applying it to this catalog.</v-card-subtitle>
+          <v-card-subtitle>Preview a native Artificer bundle before applying it to this catalog.</v-card-subtitle>
         </v-card-item>
 
         <v-divider />

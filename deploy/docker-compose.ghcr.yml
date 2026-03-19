@@ -3,9 +3,9 @@ services:
     image: postgres:15
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-mockadmin}
+      POSTGRES_USER: ${POSTGRES_USER:-artificer}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
-      POSTGRES_DB: ${POSTGRES_DB:-mockapi}
+      POSTGRES_DB: ${POSTGRES_DB:-artificer}
       POSTGRES_INITDB_ARGS: --auth-local=scram-sha-256 --auth-host=scram-sha-256
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -13,20 +13,20 @@ services:
       test:
         [
           "CMD-SHELL",
-          "PGPASSWORD=${POSTGRES_PASSWORD:-change-me} pg_isready -h localhost -U ${POSTGRES_USER:-mockadmin} -d ${POSTGRES_DB:-mockapi}",
+          "PGPASSWORD=${POSTGRES_PASSWORD:-change-me} pg_isready -h localhost -U ${POSTGRES_USER:-artificer} -d ${POSTGRES_DB:-artificer}",
         ]
       interval: 5s
       timeout: 5s
       retries: 10
 
   api:
-    image: ${IMAGE_REPOSITORY:-ghcr.io/sxmxc/urban-octo-bassoon}-api:${IMAGE_TAG:-edge}
+    image: ${IMAGE_REPOSITORY:-ghcr.io/sxmxc/artificer}-api:${IMAGE_TAG:-edge}
     restart: unless-stopped
     pull_policy: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-mockadmin}
+      POSTGRES_USER: ${POSTGRES_USER:-artificer}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
-      POSTGRES_DB: ${POSTGRES_DB:-mockapi}
+      POSTGRES_DB: ${POSTGRES_DB:-artificer}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       ADMIN_BOOTSTRAP_USERNAME: ${ADMIN_BOOTSTRAP_USERNAME:-admin}
@@ -45,7 +45,7 @@ services:
       - "${API_PUBLISHED_PORT:-8000}:8000"
 
   admin-web:
-    image: ${IMAGE_REPOSITORY:-ghcr.io/sxmxc/urban-octo-bassoon}-admin-web:${IMAGE_TAG:-edge}
+    image: ${IMAGE_REPOSITORY:-ghcr.io/sxmxc/artificer}-studio:${IMAGE_TAG:-edge}
     restart: unless-stopped
     pull_policy: always
     environment:
@@ -57,4 +57,4 @@ services:
 
 volumes:
   pgdata:
-    name: ${POSTGRES_VOLUME_NAME:-urban_octo_bassoon_pgdata}
+    name: ${POSTGRES_VOLUME_NAME:-artificer_pgdata}

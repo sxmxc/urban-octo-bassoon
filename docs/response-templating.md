@@ -1,6 +1,6 @@
 # Response Templating Scope
 
-This document scopes the first pass of response templating so Mockingbird can support richer dynamic payloads without abandoning the drag-and-drop schema studio.
+This document scopes the first pass of response templating so Artificer can support richer dynamic payloads without abandoning the drag-and-drop schema studio.
 
 Current status: the phase 1 backend/runtime support, schema-studio inspector controls, helper chips, and request-aware preview inputs are now implemented on top of this scope, with the preview-context form living below the canvas so the live-preview pane can stay focused on output.
 
@@ -30,7 +30,7 @@ Phase 1 adds an optional `x-mock.template` string to response-side `string` node
     "mode": "generate",
     "type": "url",
     "options": {},
-    "template": "https://mockingbird.test/orders/{{request.path.orderId}}?source={{value}}"
+    "template": "https://artificer.test/orders/{{request.path.orderId}}?source={{value}}"
   }
 }
 ```

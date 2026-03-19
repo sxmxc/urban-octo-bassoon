@@ -89,7 +89,7 @@ class EndpointImportMode(str, Enum):
 
 class EndpointBundle(BaseModel):
     schema_version: int = 1
-    product: str = "Mockingbird"
+    product: str = "Artificer"
     exported_at: datetime
     endpoints: List[EndpointBase] = Field(default_factory=list)
 

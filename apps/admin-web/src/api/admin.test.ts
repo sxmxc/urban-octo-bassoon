@@ -48,7 +48,7 @@ describe("admin endpoint bundle API", () => {
   it("requests the endpoint export bundle with bearer auth", async () => {
     const bundle: EndpointBundle = {
       schema_version: 1,
-      product: "Mockingbird",
+      product: "Artificer",
       exported_at: "2026-03-17T00:00:00Z",
       endpoints: [],
     };
@@ -74,7 +74,7 @@ describe("admin endpoint bundle API", () => {
     const payload: EndpointImportRequestPayload = {
       bundle: {
         schema_version: 1,
-        product: "Mockingbird",
+        product: "Artificer",
         exported_at: "2026-03-17T00:00:00Z",
         endpoints: [
           {

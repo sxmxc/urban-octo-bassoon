@@ -1,6 +1,6 @@
 # Architecture
 
-Mockingbird is built as a **monorepo** with a public API surface and a private admin studio. The platform is now pivoting from a mock-first product into a route-first API platform, so the architecture is being split more explicitly into a control plane, a production runtime path, and a preview/examples engine.
+Artificer is built as a **monorepo** with a public API surface and a private admin studio. The platform is now pivoting from a mock-first product into a route-first API platform, so the architecture is being split more explicitly into a control plane, a production runtime path, and a preview/examples engine.
 
 ## Design goals
 
@@ -29,13 +29,13 @@ The current milestone is the **first branch-aware live-flow slice**:
   - FastAPI application serving two sets of endpoints:
     - **Admin API / control plane**: bearer-session auth, account-profile endpoints, password rotation, admin roles/permissions, dashboard-user management, CRUD operations for route definitions, plus new scaffolding for route implementations, deployments, connections, and executions.
     - **Public runtime**: the public catchall now checks a compiled deployment registry first and can execute the first live flow nodes for deployed routes.
-    - **Public status/reference**: an API status page at `/status` plus `/api/reference.json`, both driven from the shared public-route selector plus a backend-owned route publication-state model instead of blindly exposing every enabled route. The root `/` and `/api` now intentionally return no content.
+    - **Public status/reference**: an API status page at `/status` plus `/api/reference.json`, both driven from the shared public-route selector plus a backend-owned route publication-state model instead of blindly exposing every enabled route. The root `/` now redirects to `/status`, while `/api` intentionally returns no content.
     - **System health**: `/api/health` is now a first-class system endpoint that reports dependency-by-dependency health for the API process, database, deployment registry, public reference generation, and OpenAPI generation.
   - **Postgres** is used as the single source of truth for route definitions, implementations, deployments, connections, admin users, and execution history.
   - Private admin path space such as `/api/admin` is reserved and cannot be claimed by DB-backed public routes.
   - Baseline browser hardening headers now ship from the FastAPI layer, while the admin frontend mirrors them in both Vite dev and the runtime Nginx image.
   - **OpenAPI generation** is performed at runtime from the same shared public-route selector used by the status/reference feed.
-  - **Preview/examples generation** still supports fixed, true-random, and mocking-random response values from `response_schema`, explicit semantic value types for context-aware data like IDs, names, emails, prices, and long-form text fields, request-aware string templating through `x-mock.template`, and a deliberately snarkier Mockingbird voice in `mocking` mode.
+  - **Preview/examples generation** still supports fixed, true-random, and mocking-random response values from `response_schema`, explicit semantic value types for context-aware data like IDs, names, emails, prices, and long-form text fields, request-aware string templating through `x-mock.template`, and a deliberately snarkier Artificer voice in `mocking` mode.
   - The live runtime path now includes route implementations, environment deployments, execution traces, a compiled in-memory matcher cache keyed by method/path specificity, first-class `if_condition` / `switch` branch routing, and first-class `http_request` / `postgres_query` connector execution.
   - During the transition, the public catchall still falls back to the legacy mock generator for routes that have not yet entered the live-runtime lifecycle; once a route has a saved implementation/deployment record, it is public only through an active deployment.
 

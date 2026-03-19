@@ -119,7 +119,7 @@ def build_api_health() -> ApiHealthResponse:
 
             openapi_started_at = perf_counter()
             openapi_document = build_public_openapi_document(
-                title="Mockingbird",
+                title="Artificer API",
                 version=settings.app_version,
                 endpoints=endpoints,
             )

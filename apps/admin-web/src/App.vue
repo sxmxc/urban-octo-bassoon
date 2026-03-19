@@ -103,11 +103,11 @@ async function signOut(): Promise<void> {
       <v-container class="studio-topbar-inner fill-height px-3 px-sm-5" fluid>
         <v-btn class="studio-brand-button px-0" variant="text" @click="goToHome">
           <span class="brand-mark">
-            <img alt="Mockingbird logo" class="brand-mark-image" src="/mockingbird-icon.svg">
+            <img alt="Artificer logo" class="brand-mark-image" src="/icon.svg">
           </span>
           <span class="studio-brand-copy">
-            <span class="studio-brand-name">Mockingbird</span>
-            <span class="studio-brand-subtitle">Admin console</span>
+            <span class="studio-brand-name">Artificer</span>
+            <span class="studio-brand-subtitle">Studio</span>
           </span>
         </v-btn>
 
