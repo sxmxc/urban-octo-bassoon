@@ -4,13 +4,12 @@ This file tracks the work needed to bootstrap and evolve the project.
 Read `docs/roadmap.md` alongside this file if you are picking up the next implementation slice.
 
 ## Now
-- [ ] Add execution drill-down and replay tooling on top of the new `ExecutionRun` / `ExecutionStep` records
-
-## Next
 - [ ] Move the schema editor under the route `Contract` journey instead of keeping it as a separate transitional page
 
-## Later
+## Next
 - [ ] Add advanced inbound auth (API keys, bearer token policies, scopes)
+
+## Later
 - [ ] Improve OpenAPI and reference-feed publishing so only promoted runtime contracts are exposed
 - [ ] Add multi-project and multi-environment support beyond the current scaffolding defaults
 
@@ -18,6 +17,8 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [ ] (none)
 
 ## Done
+- [x] Ignore stale execution-detail responses when operators change selected runs before earlier requests finish
+- [x] Add execution drill-down and replay tooling on top of the new `ExecutionRun` / `ExecutionStep` records
 - [x] Redirect the API root `/` to `/status` while keeping `/api` empty
 - [x] Standardize the platform brand around Artificer, Artificer API, and Artificer Studio, including the shared `icon.svg` logo asset and renamed repo/image references
 - [x] Preserve backend live/deployment-history status when deployment metadata is unavailable in admin runtime views

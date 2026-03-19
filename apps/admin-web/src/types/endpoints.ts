@@ -309,7 +309,7 @@ export interface ExecutionRun {
   method: string;
   path: string;
   status: string;
-  request_data: JsonObject;
+  request_data: ExecutionRequestData;
   response_status_code: number | null;
   response_body: JsonObject | null;
   error_message: string | null;
@@ -319,4 +319,12 @@ export interface ExecutionRun {
 
 export interface ExecutionRunDetail extends ExecutionRun {
   steps: ExecutionStep[];
+}
+
+export interface ExecutionRequestData {
+  [key: string]: JsonValue | undefined;
+  path_parameters?: Record<string, JsonValue>;
+  query_parameters?: Record<string, JsonValue>;
+  body_present?: boolean;
+  request_body?: JsonValue | null;
 }

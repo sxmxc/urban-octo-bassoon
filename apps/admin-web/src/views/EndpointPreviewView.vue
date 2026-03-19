@@ -43,6 +43,7 @@ const loadError = ref<string | null>(null);
 const contractPreviewError = ref<string | null>(null);
 const requestError = ref<string | null>(null);
 const runtimeStateError = ref<string | null>(null);
+const replayNotice = ref<string | null>(null);
 
 const endpointId = computed(() => {
   const rawId = route.params.endpointId;
@@ -83,6 +84,54 @@ function prettyJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+function parseReplayMap(prefix: "replay_path_" | "replay_query_"): Record<string, string> {
+  const replayMap: Record<string, string> = {};
+
+  for (const [key, rawValue] of Object.entries(route.query)) {
+    if (!key.startsWith(prefix)) {
+      continue;
+    }
+
+    const normalizedKey = key.slice(prefix.length);
+    if (!normalizedKey) {
+      continue;
+    }
+
+    const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;
+    if (typeof value !== "string") {
+      continue;
+    }
+
+    replayMap[normalizedKey] = value;
+  }
+
+  return replayMap;
+}
+
+function buildReplayNotice(options: {
+  replayRunId: string;
+  replayPathParameters: Record<string, string>;
+  replayQueryParameters: Record<string, string>;
+  replayBodyCaptured: string | null | undefined;
+}): string {
+  const replayInputCount =
+    Object.keys(options.replayPathParameters).length + Object.keys(options.replayQueryParameters).length;
+
+  if (replayInputCount === 0) {
+    if (options.replayBodyCaptured === "0") {
+      return `Replaying run #${options.replayRunId}: this trace had no path/query inputs to prefill, and request body replay is unavailable because only body-presence metadata was captured.`;
+    }
+
+    return `Replaying run #${options.replayRunId}: this trace had no path or query inputs to prefill.`;
+  }
+
+  if (options.replayBodyCaptured === "0") {
+    return `Replaying run #${options.replayRunId}: path/query inputs were prefilled, but request body replay is unavailable because only body-presence metadata was captured for this trace.`;
+  }
+
+  return `Replaying run #${options.replayRunId}: path/query inputs were prefilled from the selected execution trace.`;
+}
+
 async function loadEndpoint(): Promise<void> {
   if (!endpointId.value || !auth.session.value) {
     isLoading.value = false;
@@ -95,6 +144,7 @@ async function loadEndpoint(): Promise<void> {
   contractPreviewError.value = null;
   requestError.value = null;
   runtimeStateError.value = null;
+  replayNotice.value = null;
 
   try {
     const loadedEndpoint = await getEndpoint(endpointId.value, auth.session.value);
@@ -104,6 +154,36 @@ async function loadEndpoint(): Promise<void> {
       return accumulator;
     }, buildDefaultPathParameters(loadedEndpoint.path));
     queryParameters.value = buildDefaultQueryParameterValues(queryParameterDefinitions.value);
+
+    const replayPathParameters = parseReplayMap("replay_path_");
+    const replayQueryParameters = parseReplayMap("replay_query_");
+    if (Object.keys(replayPathParameters).length > 0) {
+      pathParameters.value = {
+        ...pathParameters.value,
+        ...replayPathParameters,
+      };
+    }
+    if (Object.keys(replayQueryParameters).length > 0) {
+      queryParameters.value = {
+        ...queryParameters.value,
+        ...replayQueryParameters,
+      };
+    }
+
+    const replayRunIdRaw = Array.isArray(route.query.replayRunId) ? route.query.replayRunId[0] : route.query.replayRunId;
+    const replayRunId = typeof replayRunIdRaw === "string" && replayRunIdRaw.trim() ? replayRunIdRaw.trim() : null;
+    const replayBodyCapturedRaw = Array.isArray(route.query.replayBodyCaptured)
+      ? route.query.replayBodyCaptured[0]
+      : route.query.replayBodyCaptured;
+    if (replayRunId) {
+      replayNotice.value = buildReplayNotice({
+        replayRunId,
+        replayPathParameters,
+        replayQueryParameters,
+        replayBodyCaptured: typeof replayBodyCapturedRaw === "string" ? replayBodyCapturedRaw : null,
+      });
+    }
+
     requestBody.value = "{}";
     previewResult.value = null;
     samplePreview.value = null;
@@ -430,6 +510,10 @@ async function runLiveRequest(): Promise<void> {
 
       <v-alert border="start" color="info" variant="tonal">
         Contract preview uses the admin preview endpoint and never executes live connectors. Send live request hits the public route path and follows the live state shown above.
+      </v-alert>
+
+      <v-alert v-if="replayNotice" border="start" color="secondary" variant="tonal">
+        {{ replayNotice }}
       </v-alert>
 
       <v-alert v-if="runtimeStateError" border="start" color="warning" variant="tonal">

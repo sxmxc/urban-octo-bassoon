@@ -61,6 +61,7 @@ Already shipped:
   - `Test`
   - `Deploy`
 - a clearer `Test` journey and dedicated route tester that now separate admin contract previews from live/public requests and label live versus draft runtime state explicitly
+- execution drill-down in the `Test` workspace, including lazy-loaded run details, ordered step traces, and a replay handoff into the dedicated tester with captured path/query inputs prefilled when available
 - shared Flow value rendering for runtime and editor inspection, so transform/response mappings can combine whole-value refs with inline `{{...}}` string interpolation
 - selection-aware quick-ref drag/drop in Flow JSON editors, so helper pills replace the current token/selection instead of clobbering the whole draft payload
 - Flow-tab inspector support for binding HTTP and Postgres nodes to saved shared connections
@@ -82,8 +83,9 @@ Still transitional:
 ### 1. Improve operator surfaces
 
 After the above:
-- execution drill-down
-- replay/debug tooling
+- move the schema editor under the route `Contract` journey
+- deployment promotion polish
+- deeper replay/debug tooling once request-capture retention rules are explicit
 - deployment promotion polish
 
 ## Current Runtime Boundaries
