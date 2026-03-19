@@ -32,6 +32,7 @@ Provide a Docker-first, route-first API platform with a polished public-facing s
 
 ## Current Status Snapshot
 - Docker Compose starts a working Postgres, FastAPI API, and Vite admin app with `make up`.
+- The `make ui-test-user` bootstrap helper now preserves its argparse defaults when `UI_TEST_ADMIN_*` variables are unset or blank, so the documented zero-config QA-account flow no longer fails on blank username/role env injection.
 - The backend exposes session-authenticated admin routes, DB-backed dashboard-user management, forced password rotation for bootstrap/reset credentials, deployment-backed live runtime dispatch, legacy DB-driven mock fallback for legacy-only routes, live OpenAPI generation, and an authenticated response preview endpoint.
 - The backend now persists `RouteImplementation`, `RouteDeployment`, `Connection`, `ExecutionRun`, and `ExecutionStep` records, with an Alembic migration that bootstraps those tables into existing databases.
 - The public runtime now compiles active deployments into an in-memory matcher cache and records per-request execution traces when a live implementation handles the route.

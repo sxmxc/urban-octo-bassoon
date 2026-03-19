@@ -24,6 +24,7 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [ ] (none)
 
 ## Done
+- [x] Preserve `make ui-test-user` helper defaults when `UI_TEST_ADMIN_*` vars are unset or blank in the shell/container env
 - [x] Document the safer local browser-QA workflow around stack reuse, dedicated QA accounts, and real login
 - [x] Make the `Test` journey honest about what is preview/example output versus what is draft/live runtime execution
 - [x] Add an explicit route unpublish/disable-live action so operators can remove a route from the live deployment registry without deleting the route definition or draft flow

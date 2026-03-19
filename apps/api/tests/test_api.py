@@ -28,6 +28,7 @@ from sqlmodel import Session
 import app.db as db_module
 import app.services.admin_auth as admin_auth_module
 import app.services.route_runtime as route_runtime_module
+import scripts.create_test_admin as create_test_admin_script
 from app.db import create_db_and_tables, engine
 from app.main import app
 from app.models import EndpointDefinition, RouteDeployment
@@ -1571,6 +1572,24 @@ def test_ensure_test_admin_user_rejects_shared_or_non_test_usernames(empty_db):
                 password="reviewer-password-123",
                 must_change_password=False,
             )
+
+
+def test_create_test_admin_parser_preserves_defaults_when_env_vars_are_blank(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv(create_test_admin_script.USERNAME_ENV, "")
+    monkeypatch.setenv(create_test_admin_script.PASSWORD_FILE_ENV, "   ")
+    monkeypatch.setenv(create_test_admin_script.FULL_NAME_ENV, "")
+    monkeypatch.setenv(create_test_admin_script.EMAIL_ENV, "")
+    monkeypatch.setenv(create_test_admin_script.AVATAR_URL_ENV, "   ")
+    monkeypatch.setenv(create_test_admin_script.ROLE_ENV, "")
+
+    args = create_test_admin_script._build_parser().parse_args([])
+
+    assert args.username == create_test_admin_script.DEFAULT_USERNAME
+    assert args.password_file is None
+    assert args.full_name == create_test_admin_script.DEFAULT_FULL_NAME
+    assert args.email is None
+    assert args.avatar_url is None
+    assert args.role == create_test_admin_script.DEFAULT_ROLE.value
 
 
 def test_admin_account_profile_endpoints_update_the_current_user(empty_db):

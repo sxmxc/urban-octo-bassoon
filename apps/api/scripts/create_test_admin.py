@@ -47,6 +47,13 @@ def _optional_text(value: str | None) -> str | None:
     return normalized or None
 
 
+def _env_or_default(name: str, default: str | None = None) -> str | None:
+    normalized = _optional_text(os.environ.get(name))
+    if normalized is None:
+        return default
+    return normalized
+
+
 def _read_password_file(path: str | None) -> str | None:
     normalized_path = _optional_text(path)
     if normalized_path is None:
@@ -127,12 +134,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Create or reset a dedicated local admin account for browser/UI testing.",
     )
-    parser.add_argument("--username", default=os.environ.get(USERNAME_ENV, DEFAULT_USERNAME))
-    parser.add_argument("--password-file", default=os.environ.get(PASSWORD_FILE_ENV))
-    parser.add_argument("--full-name", default=os.environ.get(FULL_NAME_ENV, DEFAULT_FULL_NAME))
-    parser.add_argument("--email", default=os.environ.get(EMAIL_ENV))
-    parser.add_argument("--avatar-url", default=os.environ.get(AVATAR_URL_ENV))
-    parser.add_argument("--role", default=os.environ.get(ROLE_ENV, DEFAULT_ROLE.value))
+    parser.add_argument("--username", default=_env_or_default(USERNAME_ENV, DEFAULT_USERNAME))
+    parser.add_argument("--password-file", default=_env_or_default(PASSWORD_FILE_ENV))
+    parser.add_argument("--full-name", default=_env_or_default(FULL_NAME_ENV, DEFAULT_FULL_NAME))
+    parser.add_argument("--email", default=_env_or_default(EMAIL_ENV))
+    parser.add_argument("--avatar-url", default=_env_or_default(AVATAR_URL_ENV))
+    parser.add_argument("--role", default=_env_or_default(ROLE_ENV, DEFAULT_ROLE.value))
     parser.add_argument(
         "--must-change-password",
         action="store_true",
