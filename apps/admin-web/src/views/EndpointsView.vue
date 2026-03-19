@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import {
   AdminApiError,
   createConnection,
+  getExecution,
   getCurrentRouteImplementation,
   listConnections,
   createEndpoint,
@@ -35,6 +36,7 @@ import type {
   EndpointImportResponse,
   EndpointImportSummary,
   ExecutionRun,
+  ExecutionRunDetail,
   RouteFlowDefinition,
   RouteDeployment,
   RouteImplementation,
@@ -100,6 +102,10 @@ const isPublishingDeployment = ref(false);
 const isUnpublishingDeployment = ref(false);
 const executions = ref<ExecutionRun[]>([]);
 const isLoadingExecutions = ref(false);
+const selectedExecutionId = ref<number | null>(null);
+const selectedExecutionDetail = ref<ExecutionRunDetail | null>(null);
+const isLoadingExecutionDetail = ref(false);
+const executionDetailError = ref<string | null>(null);
 const connections = ref<Connection[]>([]);
 const isLoadingConnections = ref(false);
 const isSavingConnection = ref(false);
@@ -605,6 +611,77 @@ function executionStatusColor(status: string): string {
   return "error";
 }
 
+function formatJson(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "n/a";
+  }
+
+  return JSON.stringify(value, null, 2);
+}
+
+function coerceExecutionParameterMap(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.entries(value as Record<string, unknown>).reduce<Record<string, string>>((accumulator, [key, rawValue]) => {
+    if (rawValue === undefined || rawValue === null) {
+      return accumulator;
+    }
+    if (typeof rawValue === "object") {
+      return accumulator;
+    }
+
+    accumulator[key] = String(rawValue);
+    return accumulator;
+  }, {});
+}
+
+function extractExecutionReplayContext(requestDataRaw: unknown): {
+  pathParameters: Record<string, string>;
+  queryParameters: Record<string, string>;
+  bodyPresent: boolean;
+  hasCapturedBody: boolean;
+} {
+  const requestData =
+    requestDataRaw && typeof requestDataRaw === "object" && !Array.isArray(requestDataRaw)
+      ? (requestDataRaw as Record<string, unknown>)
+      : {};
+  const bodyPresent = requestData.body_present === true;
+  const hasCapturedBody = Object.prototype.hasOwnProperty.call(requestData, "request_body");
+
+  return {
+    pathParameters: coerceExecutionParameterMap(requestData.path_parameters),
+    queryParameters: coerceExecutionParameterMap(requestData.query_parameters),
+    bodyPresent,
+    hasCapturedBody,
+  };
+}
+
+const selectedExecutionSteps = computed<ExecutionRunDetail["steps"]>(() => {
+  if (!selectedExecutionDetail.value) {
+    return [];
+  }
+
+  return [...selectedExecutionDetail.value.steps].sort((left, right) => left.order_index - right.order_index);
+});
+
+const selectedExecutionBodyReplayNote = computed(() => {
+  if (!selectedExecutionDetail.value) {
+    return null;
+  }
+  const context = extractExecutionReplayContext(selectedExecutionDetail.value.request_data);
+
+  if (context.hasCapturedBody) {
+    return "Replay currently seeds path and query values only. Captured request body data is shown below but is not auto-filled.";
+  }
+  if (context.bodyPresent) {
+    return "This run only recorded request body presence metadata, so request body replay is unavailable for this trace.";
+  }
+
+  return "This run did not include a request body.";
+});
+
 async function loadRouteRuntimeScaffolding(endpointId: number): Promise<void> {
   if (!auth.session.value) {
     return;
@@ -613,6 +690,10 @@ async function loadRouteRuntimeScaffolding(endpointId: number): Promise<void> {
   isLoadingImplementation.value = true;
   isLoadingDeployments.value = true;
   isLoadingExecutions.value = true;
+  isLoadingExecutionDetail.value = false;
+  selectedExecutionId.value = null;
+  selectedExecutionDetail.value = null;
+  executionDetailError.value = null;
   isLoadingConnections.value = true;
   flowEditorError.value = null;
   flowValidationError.value = null;
@@ -644,6 +725,36 @@ async function loadRouteRuntimeScaffolding(endpointId: number): Promise<void> {
     isLoadingDeployments.value = false;
     isLoadingExecutions.value = false;
     isLoadingConnections.value = false;
+  }
+}
+
+async function selectExecution(executionId: number): Promise<void> {
+  if (!auth.session.value) {
+    executionDetailError.value = "Sign in again before inspecting execution details.";
+    return;
+  }
+
+  if (selectedExecutionId.value === executionId && selectedExecutionDetail.value?.id === executionId) {
+    return;
+  }
+
+  selectedExecutionId.value = executionId;
+  selectedExecutionDetail.value = null;
+  executionDetailError.value = null;
+  isLoadingExecutionDetail.value = true;
+
+  try {
+    selectedExecutionDetail.value = await getExecution(executionId, auth.session.value);
+  } catch (error) {
+    if (error instanceof AdminApiError && error.status === 401) {
+      void auth.logout("Your admin session expired. Sign in again to inspect route execution details.");
+      void router.push({ name: "login" });
+      return;
+    }
+
+    executionDetailError.value = describeAdminError(error, "Unable to load execution details.");
+  } finally {
+    isLoadingExecutionDetail.value = false;
   }
 }
 
@@ -956,6 +1067,31 @@ function openPreview(): void {
   }
 
   void router.push({ name: "endpoint-preview", params: { endpointId: selectedEndpoint.value.id } });
+}
+
+function replayExecutionInTester(): void {
+  if (!selectedEndpoint.value || !selectedExecutionDetail.value) {
+    return;
+  }
+
+  const replayContext = extractExecutionReplayContext(selectedExecutionDetail.value.request_data);
+  const replayQuery: Record<string, string> = {
+    replayRunId: String(selectedExecutionDetail.value.id),
+    replayBodyCaptured: replayContext.hasCapturedBody ? "1" : replayContext.bodyPresent ? "0" : "none",
+  };
+
+  for (const [key, value] of Object.entries(replayContext.pathParameters)) {
+    replayQuery[`replay_path_${key}`] = value;
+  }
+  for (const [key, value] of Object.entries(replayContext.queryParameters)) {
+    replayQuery[`replay_query_${key}`] = value;
+  }
+
+  void router.push({
+    name: "endpoint-preview",
+    params: { endpointId: selectedEndpoint.value.id },
+    query: replayQuery,
+  });
 }
 
 function duplicateSelectedEndpoint(): void {
@@ -1599,7 +1735,17 @@ const activeTitle = computed(() => {
                             v-for="execution in executions"
                             :key="execution.id"
                             class="runtime-row pa-4"
+                            :class="{
+                              'runtime-row--selectable': true,
+                              'runtime-row--selected': selectedExecutionId === execution.id,
+                            }"
+                            :aria-label="`Inspect run ${execution.id}`"
                             rounded="lg"
+                            role="button"
+                            tabindex="0"
+                            @click="selectExecution(execution.id)"
+                            @keydown.enter.prevent="selectExecution(execution.id)"
+                            @keydown.space.prevent="selectExecution(execution.id)"
                           >
                             <div class="d-flex flex-wrap align-center justify-space-between ga-3">
                               <div class="d-flex flex-wrap align-center ga-2">
@@ -1619,10 +1765,134 @@ const activeTitle = computed(() => {
                               </div>
                             </div>
 
-                            <div class="d-flex flex-wrap ga-3 mt-3 text-body-2 text-medium-emphasis">
-                              <span>Status code: {{ execution.response_status_code ?? "n/a" }}</span>
-                              <span>Environment: {{ execution.environment }}</span>
-                              <span>Published implementation: {{ execution.implementation_id ?? "n/a" }}</span>
+                            <div class="d-flex flex-wrap align-center justify-space-between ga-3 mt-3 text-body-2 text-medium-emphasis">
+                              <div class="d-flex flex-wrap ga-3">
+                                <span>Status code: {{ execution.response_status_code ?? "n/a" }}</span>
+                                <span>Environment: {{ execution.environment }}</span>
+                                <span>Published implementation: {{ execution.implementation_id ?? "n/a" }}</span>
+                              </div>
+                              <v-chip
+                                :color="selectedExecutionId === execution.id ? 'primary' : 'secondary'"
+                                label
+                                size="small"
+                                variant="tonal"
+                              >
+                                {{ selectedExecutionId === execution.id ? "Selected" : "Inspect run" }}
+                              </v-chip>
+                            </div>
+                          </v-sheet>
+
+                          <v-skeleton-loader
+                            v-if="isLoadingExecutionDetail"
+                            type="heading, paragraph, paragraph, paragraph"
+                          />
+
+                          <v-alert v-else-if="executionDetailError" border="start" color="error" variant="tonal">
+                            {{ executionDetailError }}
+                          </v-alert>
+
+                          <v-sheet
+                            v-else-if="selectedExecutionDetail"
+                            class="runtime-row pa-4 d-flex flex-column ga-4"
+                            rounded="lg"
+                          >
+                            <div class="d-flex flex-wrap align-start justify-space-between ga-3">
+                              <div>
+                                <div class="text-overline text-medium-emphasis">Execution details</div>
+                                <div class="text-h6">
+                                  Run #{{ selectedExecutionDetail.id }} · {{ selectedExecutionDetail.method }}
+                                  {{ selectedExecutionDetail.path }}
+                                </div>
+                                <div class="text-body-2 text-medium-emphasis">
+                                  Started {{ formatTimestamp(selectedExecutionDetail.started_at) }} · Completed
+                                  {{ formatTimestamp(selectedExecutionDetail.completed_at) }}
+                                </div>
+                              </div>
+                              <v-btn
+                                color="secondary"
+                                prepend-icon="mdi-flask-outline"
+                                variant="tonal"
+                                @click="replayExecutionInTester"
+                              >
+                                Replay in tester
+                              </v-btn>
+                            </div>
+
+                            <v-alert border="start" color="info" variant="tonal">
+                              {{ selectedExecutionBodyReplayNote }}
+                            </v-alert>
+
+                            <div class="d-flex flex-wrap ga-3 text-body-2 text-medium-emphasis">
+                              <span>Status code: {{ selectedExecutionDetail.response_status_code ?? "n/a" }}</span>
+                              <span>Environment: {{ selectedExecutionDetail.environment }}</span>
+                              <span>Deployment: {{ selectedExecutionDetail.deployment_id ?? "n/a" }}</span>
+                              <span>Implementation: {{ selectedExecutionDetail.implementation_id ?? "n/a" }}</span>
+                            </div>
+
+                            <v-row density="comfortable">
+                              <v-col cols="12" md="4">
+                                <v-sheet class="schema-summary-card pa-3" rounded="lg">
+                                  <div class="text-overline text-medium-emphasis">Request metadata</div>
+                                  <pre class="execution-json mt-2">{{ formatJson(selectedExecutionDetail.request_data) }}</pre>
+                                </v-sheet>
+                              </v-col>
+                              <v-col cols="12" md="4">
+                                <v-sheet class="schema-summary-card pa-3" rounded="lg">
+                                  <div class="text-overline text-medium-emphasis">Response body</div>
+                                  <pre class="execution-json mt-2">{{ formatJson(selectedExecutionDetail.response_body) }}</pre>
+                                </v-sheet>
+                              </v-col>
+                              <v-col cols="12" md="4">
+                                <v-sheet class="schema-summary-card pa-3" rounded="lg">
+                                  <div class="text-overline text-medium-emphasis">Runtime error</div>
+                                  <pre class="execution-json mt-2">{{ selectedExecutionDetail.error_message ?? "n/a" }}</pre>
+                                </v-sheet>
+                              </v-col>
+                            </v-row>
+
+                            <div class="d-flex flex-column ga-3">
+                              <div class="text-overline text-medium-emphasis">Execution steps</div>
+                              <div
+                                v-if="selectedExecutionSteps.length === 0"
+                                class="text-body-2 text-medium-emphasis"
+                              >
+                                No step traces were recorded for this run.
+                              </div>
+                              <v-sheet
+                                v-for="step in selectedExecutionSteps"
+                                :key="step.id"
+                                class="runtime-row pa-3"
+                                rounded="lg"
+                              >
+                                <div class="d-flex flex-wrap align-center justify-space-between ga-3">
+                                  <div class="d-flex flex-wrap align-center ga-2">
+                                    <v-chip :color="executionStatusColor(step.status)" label size="small" variant="tonal">
+                                      {{ step.status }}
+                                    </v-chip>
+                                    <v-chip label size="small" variant="outlined">
+                                      #{{ step.order_index }} · {{ step.node_type }}
+                                    </v-chip>
+                                    <span class="font-weight-medium">{{ step.node_id }}</span>
+                                  </div>
+                                  <div class="text-caption text-medium-emphasis">
+                                    {{ formatTimestamp(step.started_at) }}
+                                  </div>
+                                </div>
+                                <div class="mt-3 d-flex flex-column ga-2">
+                                  <v-sheet class="schema-summary-card pa-2" rounded="lg">
+                                    <div class="text-caption text-medium-emphasis">Input</div>
+                                    <pre class="execution-json mt-1">{{ formatJson(step.input_data) }}</pre>
+                                  </v-sheet>
+                                  <v-sheet class="schema-summary-card pa-2" rounded="lg">
+                                    <div class="text-caption text-medium-emphasis">Output</div>
+                                    <pre class="execution-json mt-1">{{ formatJson(step.output_data) }}</pre>
+                                  </v-sheet>
+                                  <v-sheet class="schema-summary-card pa-2" rounded="lg">
+                                    <div class="text-caption text-medium-emphasis">Error</div>
+                                    <pre class="execution-json mt-1">{{ step.error_message ?? "n/a" }}</pre>
+                                  </v-sheet>
+                                </div>
+                              </v-sheet>
                             </div>
                           </v-sheet>
                         </div>
@@ -1901,6 +2171,20 @@ const activeTitle = computed(() => {
   background: color-mix(in srgb, rgb(var(--v-theme-surface)) 94%, rgb(var(--v-theme-background)) 6%);
 }
 
+.runtime-row--selectable {
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.runtime-row--selectable:hover {
+  border-color: rgba(var(--v-theme-primary), 0.42);
+}
+
+.runtime-row--selected {
+  border-color: rgba(var(--v-theme-primary), 0.62);
+  background: color-mix(in srgb, rgb(var(--v-theme-surface)) 90%, rgb(var(--v-theme-primary)) 10%);
+}
+
 .deployment-summary-card {
   min-width: min(100%, 18rem);
 }
@@ -1908,6 +2192,15 @@ const activeTitle = computed(() => {
 .flow-json-editor :deep(textarea) {
   font-family: "JetBrains Mono", "Fira Code", "Source Code Pro", monospace;
   line-height: 1.45;
+}
+
+.execution-json {
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre;
+  font-family: "JetBrains Mono", "Fira Code", "Source Code Pro", monospace;
+  font-size: 0.75rem;
+  line-height: 1.4;
 }
 
 .import-operation-list {

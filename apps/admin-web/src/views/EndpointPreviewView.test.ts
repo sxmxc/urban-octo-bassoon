@@ -357,4 +357,54 @@ describe("EndpointPreviewView", () => {
     expect(screen.getByRole("button", { name: "Send live request" })).toBeInTheDocument();
     expect(view.container.querySelector("pre.code-block")).toHaveTextContent('"source": "contract"');
   });
+
+  it("prefills shared inputs from replay query params and explains when body replay is unavailable", async () => {
+    await renderView(
+      "/endpoints/1/preview?replayRunId=77&replayBodyCaptured=0&replay_path_orderId=ord-9&replay_query_status=queued",
+    );
+    await flushPromises();
+
+    expect(screen.getByDisplayValue("ord-9")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("queued")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Replaying run #77: path/query inputs were prefilled, but request body replay is unavailable because only body-presence metadata was captured for this trace.",
+      ),
+    ).toBeInTheDocument();
+    expect(vi.mocked(previewResponse)).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: "object",
+      }),
+      "seed-1",
+      { orderId: "ord-9" },
+      expect.objectContaining({ token: "session-token" }),
+      {
+        queryParameters: { status: "queued" },
+        requestBody: {},
+      },
+    );
+  });
+
+  it("explains when a replayed trace has no path or query inputs to prefill", async () => {
+    vi.mocked(getEndpoint).mockResolvedValue(
+      createEndpoint({
+        method: "GET",
+        path: "/api/quote",
+        request_schema: {
+          type: "object",
+          properties: {},
+          required: [],
+        },
+      }),
+    );
+
+    await renderView("/endpoints/1/preview?replayRunId=30&replayBodyCaptured=none");
+    await flushPromises();
+
+    expect(
+      screen.getByText("Replaying run #30: this trace had no path or query inputs to prefill."),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Path parameter: orderId")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Query parameter: status")).not.toBeInTheDocument();
+  });
 });

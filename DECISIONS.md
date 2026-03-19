@@ -1,5 +1,10 @@
 # DECISIONS
 
+## 2026-03-19: Execution replay stays trace-driven and path/query-scoped for now
+- **First delivery slice**: Use the existing `GET /api/admin/executions/{id}` detail API plus the existing route tester as the first drill-down/replay surface instead of adding a new backend replay endpoint immediately.
+- **Retention boundary**: Seed replay from stored `path_parameters` and `query_parameters` only. Current runtime traces record `body_present` but not raw request bodies, so body replay remains out of scope until retention/redaction rules are explicitly widened.
+- **Operator messaging**: Make the UI explicit when a selected trace has no path/query inputs to prefill or only body-presence metadata, so operators do not infer broader production request retention than the runtime actually stores.
+
 ## 2026-03-19: Standardize the platform brand as Artificer
 - **Brand architecture**: Use `Artificer` as the umbrella platform name, `Artificer API` for the public/runtime/backend surface, and `Artificer Studio` for the private admin application.
 - **Shared assets**: Replace the old mascot-specific brand files with a single shared `icon.svg` mark used by the public status page, admin shell, and favicon surfaces.

@@ -6,6 +6,7 @@ import { defineComponent } from "vue";
 import EndpointsView from "./EndpointsView.vue";
 import {
   deleteEndpoint,
+  getExecution,
   getCurrentRouteImplementation,
   listConnections,
   listExecutions,
@@ -15,7 +16,7 @@ import {
   unpublishRouteDeployment,
 } from "../api/admin";
 import { vuetify } from "../plugins/vuetify";
-import type { Connection, Endpoint, EndpointDraft, ExecutionRun, RouteDeployment, RouteImplementation } from "../types/endpoints";
+import type { Connection, Endpoint, EndpointDraft, ExecutionRun, ExecutionRunDetail, RouteDeployment, RouteImplementation } from "../types/endpoints";
 
 const authStub = vi.hoisted(() => ({
   logout: vi.fn(),
@@ -60,6 +61,7 @@ vi.mock("../api/admin", async () => {
     listExecutions: vi.fn(),
     listEndpoints: vi.fn(),
     listRouteDeployments: vi.fn(),
+    getExecution: vi.fn(),
     publishRouteImplementation: vi.fn(),
     unpublishRouteDeployment: vi.fn(),
     createEndpoint: vi.fn(),
@@ -315,6 +317,47 @@ function createExecution(routeId: number): ExecutionRun {
   };
 }
 
+function createExecutionDetail(routeId: number): ExecutionRunDetail {
+  return {
+    ...createExecution(routeId),
+    request_data: {
+      path_parameters: {
+        orderId: "ord-42",
+      },
+      query_parameters: {
+        include: "items",
+      },
+      body_present: true,
+    },
+    steps: [
+      {
+        id: 11,
+        node_id: "trigger",
+        node_type: "api_trigger",
+        order_index: 1,
+        status: "success",
+        input_data: { method: "GET" },
+        output_data: { request: true },
+        error_message: null,
+        started_at: "2026-03-18T00:00:00Z",
+        completed_at: "2026-03-18T00:00:00Z",
+      },
+      {
+        id: 12,
+        node_id: "response",
+        node_type: "set_response",
+        order_index: 2,
+        status: "success",
+        input_data: { status_code: 200 },
+        output_data: { done: true },
+        error_message: null,
+        started_at: "2026-03-18T00:00:00Z",
+        completed_at: "2026-03-18T00:00:01Z",
+      },
+    ],
+  };
+}
+
 function createConnection(id: number): Connection {
   return {
     id,
@@ -358,6 +401,7 @@ describe("EndpointsView", () => {
   beforeEach(() => {
     vi.mocked(deleteEndpoint).mockReset();
     vi.mocked(getCurrentRouteImplementation).mockReset();
+    vi.mocked(getExecution).mockReset();
     vi.mocked(listConnections).mockReset();
     vi.mocked(listExecutions).mockReset();
     vi.mocked(listEndpoints).mockReset();
@@ -372,6 +416,7 @@ describe("EndpointsView", () => {
     vi.mocked(listRouteDeployments).mockResolvedValue([createDeployment(1)]);
     vi.mocked(listExecutions).mockResolvedValue([createExecution(1)]);
     vi.mocked(listConnections).mockResolvedValue([createConnection(1)]);
+    vi.mocked(getExecution).mockResolvedValue(createExecutionDetail(1));
     vi.mocked(publishRouteImplementation).mockResolvedValue(createDeployment(1));
     vi.mocked(unpublishRouteDeployment).mockResolvedValue(
       createDeployment(1, {
@@ -565,6 +610,41 @@ describe("EndpointsView", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open route tester" })).toBeInTheDocument();
     expect(screen.getByText("Published implementation: 1")).toBeInTheDocument();
+  });
+
+  it("lazy-loads selected execution details and opens replay in the tester with path/query prefills", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
+
+    const { router } = await renderView("/endpoints/1?tab=test", "edit");
+    await flushPromises();
+    const pushSpy = vi.spyOn(router, "push");
+
+    expect(vi.mocked(getExecution)).not.toHaveBeenCalled();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Inspect run 1" }));
+    await flushPromises();
+
+    expect(vi.mocked(getExecution)).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ token: "session-token" }),
+    );
+    expect(screen.getByText("Execution details")).toBeInTheDocument();
+    expect(screen.getByText("Execution steps")).toBeInTheDocument();
+    expect(screen.getByText("This run only recorded request body presence metadata, so request body replay is unavailable for this trace.")).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Replay in tester" }));
+    await flushPromises();
+
+    expect(pushSpy).toHaveBeenCalledWith({
+      name: "endpoint-preview",
+      params: { endpointId: 1 },
+      query: {
+        replayRunId: "1",
+        replayBodyCaptured: "0",
+        replay_path_orderId: "ord-42",
+        replay_query_include: "items",
+      },
+    });
   });
 
   it("hides the shared connections card while the flow editor is in focus mode", async () => {
