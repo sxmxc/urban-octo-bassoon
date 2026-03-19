@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vu
 import { useRoute, useRouter } from "vue-router";
 import {
   AdminApiError,
+  createConnection,
   getCurrentRouteImplementation,
   listConnections,
   createEndpoint,
@@ -15,14 +16,17 @@ import {
   publishRouteImplementation,
   saveCurrentRouteImplementation,
   unpublishRouteDeployment,
+  updateConnection,
   updateEndpoint,
 } from "../api/admin";
+import ConnectionManagerCard from "../components/ConnectionManagerCard.vue";
 import EndpointCatalog from "../components/EndpointCatalog.vue";
 import EndpointSettingsForm from "../components/EndpointSettingsForm.vue";
 import RouteFlowEditor from "../components/RouteFlowEditor.vue";
 import { useAuth } from "../composables/useAuth";
 import type {
   Connection,
+  ConnectionPayload,
   Endpoint,
   EndpointBundle,
   EndpointDraft,
@@ -48,6 +52,8 @@ import {
 
 const CATALOG_BACKGROUND_REFRESH_MS = 30_000;
 const CATALOG_STALE_AFTER_MS = 15_000;
+const DEFAULT_CONNECTION_PROJECT = "default";
+const DEFAULT_CONNECTION_ENVIRONMENT = "production";
 type RouteWorkspaceTab = "overview" | "contract" | "flow" | "test" | "deploy";
 const ROUTE_WORKSPACE_TABS: RouteWorkspaceTab[] = ["overview", "contract", "flow", "test", "deploy"];
 
@@ -92,6 +98,8 @@ const executions = ref<ExecutionRun[]>([]);
 const isLoadingExecutions = ref(false);
 const connections = ref<Connection[]>([]);
 const isLoadingConnections = ref(false);
+const isSavingConnection = ref(false);
+const connectionManagerError = ref<string | null>(null);
 
 let catalogRefreshTimer: number | null = null;
 let pendingCatalogRequest: Promise<void> | null = null;
@@ -258,6 +266,10 @@ const isFlowDirty = computed(
     serializedFlowDraftDefinition.value !== formattedCurrentFlowDefinition.value,
 );
 const activeDeployment = computed(() => deployments.value.find((deployment) => deployment.is_active) ?? null);
+const routeConnectionProject = computed(() => DEFAULT_CONNECTION_PROJECT);
+const routeConnectionEnvironment = computed(
+  () => activeDeployment.value?.environment?.trim() || DEFAULT_CONNECTION_ENVIRONMENT,
+);
 const hasDeploymentHistory = computed(() => deployments.value.length > 0);
 const routeTestState = computed(() =>
   selectedEndpoint.value ? buildRouteTestState(selectedEndpoint.value, currentImplementation.value, deployments.value) : null,
@@ -595,6 +607,7 @@ async function loadRouteRuntimeScaffolding(endpointId: number): Promise<void> {
   isLoadingConnections.value = true;
   flowEditorError.value = null;
   flowValidationError.value = null;
+  connectionManagerError.value = null;
 
   try {
     const [implementation, nextDeployments, nextExecutions, nextConnections] = await Promise.all([
@@ -625,12 +638,78 @@ async function loadRouteRuntimeScaffolding(endpointId: number): Promise<void> {
   }
 }
 
+async function refreshConnections(): Promise<void> {
+  if (!auth.session.value) {
+    return;
+  }
+
+  isLoadingConnections.value = true;
+  connectionManagerError.value = null;
+
+  try {
+    connections.value = await listConnections(auth.session.value);
+  } catch (error) {
+    if (error instanceof AdminApiError && error.status === 401) {
+      void auth.logout("Your admin session expired. Sign in again to keep managing connections.");
+      void router.push({ name: "login" });
+      return;
+    }
+
+    connectionManagerError.value = describeAdminError(error, "Unable to refresh connections.");
+  } finally {
+    isLoadingConnections.value = false;
+  }
+}
+
 async function refreshRouteRuntimeScaffolding(): Promise<void> {
   if (!selectedEndpoint.value) {
     return;
   }
 
   await loadRouteRuntimeScaffolding(selectedEndpoint.value.id);
+}
+
+async function persistConnection(connectionId: number | null, payload: ConnectionPayload): Promise<void> {
+  if (!auth.session.value) {
+    connectionManagerError.value = "Sign in again before managing shared connections.";
+    return;
+  }
+
+  isSavingConnection.value = true;
+  connectionManagerError.value = null;
+
+  try {
+    const savedConnection =
+      connectionId === null
+        ? await createConnection(payload, auth.session.value)
+        : await updateConnection(connectionId, payload, auth.session.value);
+    await refreshConnections();
+    pageSuccess.value =
+      connectionId === null
+        ? `Saved ${savedConnection.name} for ${savedConnection.project}/${savedConnection.environment}.`
+        : `Updated ${savedConnection.name} for ${savedConnection.project}/${savedConnection.environment}.`;
+  } catch (error) {
+    if (error instanceof AdminApiError && error.status === 401) {
+      void auth.logout("Your admin session expired. Sign in again to keep managing connections.");
+      void router.push({ name: "login" });
+      return;
+    }
+
+    connectionManagerError.value = describeAdminError(
+      error,
+      connectionId === null ? "Unable to create connection." : "Unable to update connection.",
+    );
+  } finally {
+    isSavingConnection.value = false;
+  }
+}
+
+async function handleCreateConnection(payload: ConnectionPayload): Promise<void> {
+  await persistConnection(null, payload);
+}
+
+async function handleUpdateConnection(connectionId: number, payload: ConnectionPayload): Promise<void> {
+  await persistConnection(connectionId, payload);
 }
 
 async function saveFlowDefinition(): Promise<void> {
@@ -1374,6 +1453,8 @@ const activeTitle = computed(() => {
                           v-model="flowDraftDefinition"
                           :available-connections="connections"
                           :error-message="flowEditorError"
+                          :preferred-connection-environment="routeConnectionEnvironment"
+                          :preferred-connection-project="routeConnectionProject"
                           :request-schema="draft.request_schema"
                           :response-schema="draft.response_schema"
                           :route-id="selectedEndpoint?.id ?? null"
@@ -1387,34 +1468,19 @@ const activeTitle = computed(() => {
                       </v-card-text>
                     </v-card>
 
-                    <v-card v-if="!isFlowEditorInFocusMode" class="workspace-card">
-                      <v-card-item>
-                        <v-card-title>Available connections</v-card-title>
-                        <v-card-subtitle>
-                          HTTP Request and Postgres Query nodes bind to these shared connection records.
-                        </v-card-subtitle>
-                      </v-card-item>
-
-                      <v-divider />
-
-                      <v-card-text>
-                        <v-skeleton-loader v-if="isLoadingConnections" type="table-row-divider, table-row-divider" />
-                        <div v-else-if="connections.length === 0" class="text-body-2 text-medium-emphasis">
-                          No shared connections have been configured yet.
-                        </div>
-                        <div v-else class="d-flex flex-wrap ga-2">
-                          <v-chip
-                            v-for="connection in connections"
-                            :key="connection.id"
-                            color="secondary"
-                            label
-                            variant="tonal"
-                          >
-                            {{ connection.name }} · {{ connection.connector_type }}
-                          </v-chip>
-                        </div>
-                      </v-card-text>
-                    </v-card>
+                    <ConnectionManagerCard
+                      v-if="!isFlowEditorInFocusMode"
+                      :can-write="canWriteRoutes"
+                      :connections="connections"
+                      :error-message="connectionManagerError"
+                      :is-loading="isLoadingConnections"
+                      :is-saving="isSavingConnection"
+                      :preferred-environment="routeConnectionEnvironment"
+                      :preferred-project="routeConnectionProject"
+                      @create="handleCreateConnection"
+                      @refresh="refreshConnections"
+                      @update="handleUpdateConnection"
+                    />
                   </template>
 
                   <template v-else-if="activeWorkspaceTab === 'test'">

@@ -172,6 +172,34 @@ const RouteFlowEditorStub = defineComponent({
   `,
 });
 
+// eslint-disable-next-line vue/one-component-per-file
+const ConnectionManagerCardStub = defineComponent({
+  props: {
+    connections: {
+      type: Array as () => Connection[],
+      default: () => [],
+    },
+    preferredProject: {
+      type: String,
+      default: "default",
+    },
+    preferredEnvironment: {
+      type: String,
+      default: "production",
+    },
+  },
+  emits: ["create", "refresh", "update"],
+  template: `
+    <div data-testid="connection-manager">
+      <div data-testid="connection-manager-count">{{ connections.length }}</div>
+      <div data-testid="connection-manager-scope">{{ preferredProject }} / {{ preferredEnvironment }}</div>
+      <div data-testid="connection-manager-names">
+        {{ connections.map((connection) => \`\${connection.name} · \${connection.connector_type} · \${connection.project}/\${connection.environment}\`).join(" | ") }}
+      </div>
+    </div>
+  `,
+});
+
 function createRouterInstance() {
   const viewStub = { template: "<div />" };
 
@@ -273,6 +301,8 @@ function createExecution(routeId: number): ExecutionRun {
 function createConnection(id: number): Connection {
   return {
     id,
+    project: "default",
+    environment: "production",
     name: `Connection ${id}`,
     connector_type: "http",
     description: null,
@@ -297,6 +327,7 @@ async function renderView(path: string, mode: "browse" | "create" | "edit") {
       global: {
         plugins: [vuetify, router],
         stubs: {
+          ConnectionManagerCard: ConnectionManagerCardStub,
           EndpointCatalog: EndpointCatalogStub,
           EndpointSettingsForm: EndpointSettingsFormStub,
           RouteFlowEditor: RouteFlowEditorStub,
@@ -476,7 +507,8 @@ describe("EndpointsView", () => {
     expect(screen.getByTestId("route-flow-editor")).toBeInTheDocument();
     expect(screen.getByTestId("route-flow-success")).toHaveTextContent("200");
     expect(screen.getByTestId("route-flow-connections")).toHaveTextContent("1");
-    expect(screen.getByText("Connection 1 · http")).toBeInTheDocument();
+    expect(screen.getByTestId("connection-manager-scope")).toHaveTextContent("default / production");
+    expect(screen.getByTestId("connection-manager-names")).toHaveTextContent("Connection 1 · http · default/production");
     expect(vi.mocked(getCurrentRouteImplementation)).toHaveBeenCalledWith(
       1,
       expect.objectContaining({ token: "session-token" }),
@@ -524,12 +556,12 @@ describe("EndpointsView", () => {
     await renderView("/endpoints/1?tab=flow", "edit");
     await flushPromises();
 
-    expect(screen.getByText("Available connections")).toBeInTheDocument();
+    expect(screen.getByTestId("connection-manager")).toBeInTheDocument();
 
     await fireEvent.click(screen.getByRole("button", { name: "Enter focus mode" }));
     await flushPromises();
 
-    expect(screen.queryByText("Available connections")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("connection-manager")).not.toBeInTheDocument();
   });
 
   it("lets operators disable the live route from the Deploy tab without deleting the draft", async () => {

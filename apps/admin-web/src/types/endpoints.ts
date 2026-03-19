@@ -243,6 +243,8 @@ export interface RouteDeploymentUnpublishPayload {
 }
 
 export interface ConnectionPayload {
+  project?: string;
+  environment?: string;
   name: string;
   connector_type: ConnectionType;
   description?: string | null;
@@ -251,6 +253,8 @@ export interface ConnectionPayload {
 }
 
 export interface Connection extends ConnectionPayload {
+  project: string;
+  environment: string;
   id: number;
   description: string | null;
   is_active: boolean;

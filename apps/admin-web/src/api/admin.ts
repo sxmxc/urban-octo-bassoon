@@ -35,6 +35,11 @@ interface RequestOptions {
   method?: string;
 }
 
+interface ConnectionListOptions {
+  project?: string;
+  environment?: string;
+}
+
 interface ExecutionListOptions {
   endpointId?: number;
   limit?: number;
@@ -348,13 +353,29 @@ export function unpublishRouteDeployment(
   });
 }
 
-export function listConnections(session: AdminSession): Promise<Connection[]> {
-  return request<Connection[]>("/api/admin/connections", session);
+export function listConnections(session: AdminSession, options: ConnectionListOptions = {}): Promise<Connection[]> {
+  const params = new URLSearchParams();
+  if (options.project) {
+    params.set("project", options.project);
+  }
+  if (options.environment) {
+    params.set("environment", options.environment);
+  }
+
+  const query = params.toString();
+  return request<Connection[]>(`/api/admin/connections${query ? `?${query}` : ""}`, session);
 }
 
 export function createConnection(payload: ConnectionPayload, session: AdminSession): Promise<Connection> {
   return request<Connection>("/api/admin/connections", session, {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateConnection(connectionId: number, payload: ConnectionPayload, session: AdminSession): Promise<Connection> {
+  return request<Connection>(`/api/admin/connections/${connectionId}`, session, {
+    method: "PUT",
     body: JSON.stringify(payload),
   });
 }

@@ -11,7 +11,7 @@ The admin UI is a Vue + Vite + Vuetify application that lets users manage routes
 - **Users**: Separate superuser-only user-management page that treats the directory as the primary surface, adds summary cards plus search/filter controls, opens account creation in a dedicated dialog, and supports creating, editing, disabling, and deleting admin accounts with optional profile-image URLs plus activity metadata such as last sign-in and account creation time.
 - **Route form**: Route tags are authored through a chip-style tag box with removable pills instead of a plain comma-separated text field, and the form no longer exposes the internal `slug` field.
 - **Schema editor**: Request/response builder route with a compact add-tools rail, separate field/value palettes, a connected pill-tree canvas with dedicated drag handles, collapsible object/array branches, inline row anchors plus end-of-branch add targets, plus-button insert menus as a click alternative to drag/drop, adjacent below-canvas field settings and preview-input panels, import/copy actions, response-side route-value pills derived from saved path and query definitions, response-string template controls plus helper chips in the inspector, and a request-side split between `JSON body`, `Path params`, and `Query params` authoring. The current tree surface is now considered transitional as the roadmap pivots toward a `Vue Flow`-backed canvas architecture.
-- **Flow**: The `Flow` tab now uses a Vue Flow canvas for `flow_definition`, with an API-only trigger entry, fixed-size nodes, visible `True` / `False` / `Case` / `Default` ports, drag-to-canvas palette actions, explicit `Error Response` terminals, a separate selected-node inspector, and a canvas-native full-editor mode that keeps the graph primary by default through compact floating add/info/node launchers, a top-center control bar, a MiniMap, and node-local quick actions while preserving the same backend data model.
+- **Flow**: The `Flow` tab now uses a Vue Flow canvas for `flow_definition`, with an API-only trigger entry, fixed-size nodes, visible `True` / `False` / `Case` / `Default` ports, drag-to-canvas palette actions, explicit `Error Response` terminals, a separate selected-node inspector, a scoped shared-connection manager for creating/editing/retiring HTTP and Postgres records by `project` / `environment`, and a canvas-native full-editor mode that keeps the graph primary by default through compact floating add/info/node launchers, a top-center control bar, a MiniMap, and node-local quick actions while preserving the same backend data model.
 - **Test**: Route testing is now split between schema-driven preview tools and execution-history visibility for published live routes.
 - **Deploy**: The `Deploy` tab publishes the current implementation into the runtime registry and shows deployment history.
 
@@ -41,6 +41,7 @@ The frontend communicates with the backend via the admin API under `/api/admin`.
 - `POST /api/admin/endpoints/{id}/deployments/publish`
 - `GET /api/admin/connections`
 - `POST /api/admin/connections`
+- `PUT /api/admin/connections/{id}`
 - `GET /api/admin/executions`
 - `GET /api/admin/executions/{id}`
 - `POST /api/admin/endpoints/preview-response`

@@ -248,6 +248,8 @@ describe("routeFlowInspection", () => {
     const connections: Connection[] = [
       {
         id: 12,
+        project: "default",
+        environment: "production",
         name: "Health upstream",
         connector_type: "http",
         description: null,
