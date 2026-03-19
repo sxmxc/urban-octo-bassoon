@@ -276,6 +276,15 @@ def _endpoint_import_operation(
     )
 
 
+def _import_operation_detail(error: ValueError | HTTPException) -> str:
+    if isinstance(error, HTTPException):
+        detail = error.detail
+        if isinstance(detail, str):
+            return detail
+        return str(detail)
+    return str(error)
+
+
 def _list_all_endpoints(session: Session, *, batch_size: int = 500) -> list[EndpointDefinition]:
     endpoints: list[EndpointDefinition] = []
     offset = 0
@@ -384,14 +393,14 @@ def _plan_endpoint_import(
                 current_path=bundled_endpoint.path,
                 current_request_schema=bundled_endpoint.request_schema,
             )
-        except ValueError as error:
+        except (ValueError, HTTPException) as error:
             operations.append(
                 _endpoint_import_operation(
                     "error",
                     name=bundled_endpoint.name,
                     method=bundled_endpoint.method,
                     path=bundled_endpoint.path,
-                    detail=str(error),
+                    detail=_import_operation_detail(error),
                 )
             )
             has_errors = True

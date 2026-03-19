@@ -1,3 +1,4 @@
+import importlib
 import json
 import os
 import sys
@@ -149,6 +150,31 @@ def _live_route_flow_definition(*, status_code: int = 200, body: dict | None = N
             {"source": "transform", "target": "response"},
         ],
     }
+
+
+class _FakeMigrationResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def mappings(self):
+        return self
+
+    def all(self):
+        return self._rows
+
+
+class _FakeMigrationBind:
+    def __init__(self, rows):
+        self.rows = rows
+        self.executed: list[tuple[str, dict]] = []
+
+    def execute(self, statement, params=None):
+        sql = str(statement)
+        if "SELECT" in sql and "FROM endpointdefinition" in sql:
+            return _FakeMigrationResult(self.rows)
+
+        self.executed.append((sql, dict(params or {})))
+        return _FakeMigrationResult([])
 
 
 @pytest.fixture
@@ -2488,6 +2514,74 @@ def test_system_health_path_cannot_be_created_as_public_mock(empty_db):
     assert "reserved for the system health endpoint" in response.json()["detail"]
 
 
+def test_system_health_route_migration_only_deletes_legacy_seeded_rows(monkeypatch):
+    migration_module = importlib.import_module("migrations.versions.20260319_0009_system_health_endpoint")
+    bind = _FakeMigrationBind(
+        [
+            {
+                "id": 7,
+                "name": "Health",
+                "slug": "health",
+                "method": "GET",
+                "path": "/api/health",
+                "category": "system",
+                "tags": json.dumps(["system"]),
+                "summary": "Health check",
+                "description": None,
+                "enabled": True,
+                "auth_mode": "none",
+                "request_schema": json.dumps({}),
+                "response_schema": json.dumps(migration_module.LEGACY_SEEDED_HEALTH_RESPONSE_SCHEMA),
+                "success_status_code": 200,
+                "error_rate": 0.0,
+                "latency_min_ms": 0,
+                "latency_max_ms": 0,
+                "seed_key": None,
+            }
+        ]
+    )
+    monkeypatch.setattr(migration_module.op, "get_bind", lambda: bind)
+
+    migration_module.upgrade()
+
+    assert [params["route_id"] for _, params in bind.executed] == [7, 7, 7, 7, 7]
+    assert "DELETE FROM endpointdefinition" in bind.executed[-1][0]
+
+
+def test_system_health_route_migration_fails_on_non_seeded_rows(monkeypatch):
+    migration_module = importlib.import_module("migrations.versions.20260319_0009_system_health_endpoint")
+    bind = _FakeMigrationBind(
+        [
+            {
+                "id": 13,
+                "name": "Tenant health",
+                "slug": "tenant-health",
+                "method": "GET",
+                "path": "/api/health",
+                "category": "tenant",
+                "tags": json.dumps(["tenant"]),
+                "summary": "Custom tenant health route",
+                "description": "Should not be deleted by migration.",
+                "enabled": True,
+                "auth_mode": "none",
+                "request_schema": json.dumps({}),
+                "response_schema": json.dumps({}),
+                "success_status_code": 200,
+                "error_rate": 0.0,
+                "latency_min_ms": 0,
+                "latency_max_ms": 0,
+                "seed_key": None,
+            }
+        ]
+    )
+    monkeypatch.setattr(migration_module.op, "get_bind", lambda: bind)
+
+    with pytest.raises(RuntimeError, match="non-seeded routes using /api/health"):
+        migration_module.upgrade()
+
+    assert bind.executed == []
+
+
 def test_public_route_matching_treats_saved_paths_as_literals(empty_db):
     client = TestClient(app)
     headers = _login_headers(client)
@@ -3556,6 +3650,71 @@ def test_admin_endpoint_import_supports_upsert_dry_run_and_apply(empty_db):
     assert imported_endpoints[0]["slug"] == "list-accounts-imported"
     assert imported_endpoints[1]["success_status_code"] == 201
     assert imported_endpoints[1]["enabled"] is False
+
+
+def test_admin_endpoint_import_reports_reserved_health_routes_as_row_errors(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    response = client.post(
+        "/api/admin/endpoints/import",
+        json={
+            "bundle": {
+                "schema_version": 1,
+                "product": "Mockingbird",
+                "exported_at": "2026-03-19T00:00:00Z",
+                "endpoints": [
+                    {
+                        **_endpoint_payload(name="Legacy Health", path="/api/health"),
+                        "slug": "health",
+                        "category": "system",
+                        "tags": ["system"],
+                        "summary": "Health check",
+                    },
+                    {
+                        **_endpoint_payload(name="Importable route", path="/api/importable"),
+                        "slug": "importable-route",
+                    },
+                ],
+            },
+            "mode": "upsert",
+            "dry_run": False,
+            "confirm_replace_all": False,
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["applied"] is False
+    assert response.json()["has_errors"] is True
+    assert response.json()["summary"] == {
+        "endpoint_count": 2,
+        "create_count": 1,
+        "update_count": 0,
+        "delete_count": 0,
+        "skip_count": 0,
+        "error_count": 1,
+    }
+    assert response.json()["operations"] == [
+        {
+            "action": "error",
+            "name": "Legacy Health",
+            "method": "GET",
+            "path": "/api/health",
+            "detail": "The /api/health path is reserved for the system health endpoint.",
+        },
+        {
+            "action": "create",
+            "name": "Importable route",
+            "method": "GET",
+            "path": "/api/importable",
+            "detail": None,
+        },
+    ]
+
+    list_response = client.get("/api/admin/endpoints", headers=headers)
+    assert list_response.status_code == 200
+    assert list_response.json() == []
 
 
 def test_admin_endpoint_import_replace_all_requires_confirmation_and_deletes_missing_routes(empty_db):
