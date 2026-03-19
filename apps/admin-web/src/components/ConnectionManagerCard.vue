@@ -296,10 +296,12 @@ watch(
       return;
     }
 
-    pendingSubmit.value = false;
-    if (!props.errorMessage) {
-      closeDialog();
+    if (props.errorMessage) {
+      return;
     }
+
+    pendingSubmit.value = false;
+    closeDialog();
   },
 );
 

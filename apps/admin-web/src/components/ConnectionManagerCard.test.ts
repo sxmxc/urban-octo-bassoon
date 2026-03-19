@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/vue";
+import { fireEvent, render, screen } from "@testing-library/vue";
 
 import ConnectionManagerCard from "./ConnectionManagerCard.vue";
 import { vuetify } from "../plugins/vuetify";
@@ -61,5 +61,49 @@ describe("ConnectionManagerCard", () => {
 
     expect(screen.getByText("Beta upstream")).toBeInTheDocument();
     expect(screen.queryByText("Alpha upstream")).not.toBeInTheDocument();
+  });
+
+  it("keeps API save errors visible after a failed submit", async () => {
+    const view = render(ConnectionManagerCard, {
+      props: {
+        canWrite: true,
+        connections: [],
+        errorMessage: null,
+        isSaving: false,
+        preferredProject: "project-alpha",
+        preferredEnvironment: "production",
+      },
+      global: {
+        plugins: [vuetify],
+      },
+    });
+
+    await fireEvent.click(screen.getByRole("button", { name: "New connection" }));
+    await fireEvent.update(screen.getByLabelText("Connection name"), "Duplicate name");
+    await fireEvent.update(screen.getByLabelText("Base URL"), "https://api.example.com");
+    await fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
+
+    await view.rerender({
+      canWrite: true,
+      connections: [],
+      errorMessage: null,
+      isSaving: true,
+      preferredProject: "project-alpha",
+      preferredEnvironment: "production",
+    });
+
+    await view.rerender({
+      canWrite: true,
+      connections: [],
+      errorMessage: "Connection 'Duplicate name' is already in use for scope 'project-alpha/production'.",
+      isSaving: false,
+      preferredProject: "project-alpha",
+      preferredEnvironment: "production",
+    });
+
+    expect(
+      screen.getByText("Connection 'Duplicate name' is already in use for scope 'project-alpha/production'."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save connection" })).toBeInTheDocument();
   });
 });
