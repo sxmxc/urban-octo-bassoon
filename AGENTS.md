@@ -13,7 +13,7 @@ This repository is designed for **AI-native collaboration**. AI agents (and huma
    - `docs/architecture.md`
    - `docs/roadmap.md`
    - `docs/domain-model.md`
-3. Confirm the current state by running the bootstrap scripts: `make up` (or target-specific tasks).
+3. Confirm the current state by checking whether the local stack is already serving the app (`docker compose ps --format json`, `http://localhost:3000`, and `http://localhost:8000/api/health`); only then run `make up` or target-specific tasks if services are missing.
 4. Work in small, reviewable increments and update the tracking docs after every meaningful change.
 
 ## 🧱 Architecture Guardrails
@@ -31,7 +31,7 @@ This repository is designed for **AI-native collaboration**. AI agents (and huma
 - The `Flow` tab now uses a **Vue Flow-based implementation editor** that still saves the backend `flow_definition` contract, keeps `API Trigger` as the only entry node, and can bind logic plus HTTP/Postgres nodes to the live route graph.
 - Public OpenAPI, `/api/reference.json`, and legacy mock fallback now treat routes with saved runtime history as deployment-gated; enabled legacy-only routes stay public until they enter the live runtime path.
 - The admin `Deploy` tab and admin API now support explicitly disabling the live route by deactivating the active deployment without deleting the saved route definition or implementation history.
-- The highest-value next steps are to make the `Test` journey honest about preview/example output versus live runtime execution, then fix runtime-aware route deletion.
+- The highest-value next steps are to fix runtime-aware route deletion, then keep improving the Flow/operator surface with connection management, data mapping, and node-shape visibility.
 
 ## 🧩 Coding Standards
 - Prefer clarity over cleverness.

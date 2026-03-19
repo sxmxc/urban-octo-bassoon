@@ -15,6 +15,7 @@ Mockingbird is built as a **monorepo** with a public API surface and a private a
 The current milestone is the **first branch-aware live-flow slice**:
 - backend runtime scaffolding is in place
 - admin workflow tabs are in place
+- the route `Test` workspace and dedicated route tester now separate admin contract preview from live/public request execution, with explicit draft/live state summaries
 - the deploy surface now supports both publish and disable-live actions against the active deployment
 - deployment-backed dispatch exists
 - the Flow editor now supports first-class `If` / `Switch` logic nodes plus `HTTP Request` and read-only `Postgres Query` nodes backed by shared `Connection` records
@@ -57,9 +58,7 @@ The current milestone is the **first branch-aware live-flow slice**:
 
 ## Immediate next step
 
-The next major implementation task should be to make the route `Test` journey honest about preview/example output versus draft/live runtime execution:
-- keep `request_schema` / `response_schema` as the preview/example contract source of truth
-- keep `flow_definition` plus active deployments as the live runtime source of truth
-- label draft, published, disabled-live, and preview states clearly so operators do not confuse schema examples with deployed behavior
-- preserve the current preview/runtime split so connector secrets stay out of public contract surfaces
-- after that, fix runtime-aware route deletion and then deepen Flow UX around data mapping, input/output previews, and pinned sample data rather than adding non-API trigger families
+The next major implementation task should be runtime-aware route deletion:
+- allow removing routes that already have implementations, deployments, and execution history without manual database cleanup
+- keep the preview/runtime split intact while deletion work lands, so contract previews stay schema-driven and live/public execution stays deployment-backed
+- after that, deepen Flow UX around data mapping, input/output previews, and pinned sample data rather than adding non-API trigger families

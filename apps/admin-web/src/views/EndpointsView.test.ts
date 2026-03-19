@@ -467,6 +467,33 @@ describe("EndpointsView", () => {
     );
   });
 
+  it("makes the Test tab explicit about contract preview versus live runtime state", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
+
+    await renderView("/endpoints/1?tab=test", "edit");
+    await flushPromises();
+
+    expect(screen.getByRole("tab", { name: "Test" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Contract preview")).toBeInTheDocument();
+    expect(screen.getByText("Schema-driven contract preview")).toBeInTheDocument();
+    expect(screen.getByText("Live request path")).toBeInTheDocument();
+    expect(screen.getByText("Implementation 1 is live")).toBeInTheDocument();
+    expect(screen.getByText("Draft vs live")).toBeInTheDocument();
+    expect(screen.getByText("Draft v1 is ahead of live")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The route tester compares an admin-only contract preview with real public requests. Only published live deployments can create execution traces below.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Execution history only appears for published live implementations. Legacy mock traffic does not write runtime traces here.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open route tester" })).toBeInTheDocument();
+    expect(screen.getByText("Published implementation: 1")).toBeInTheDocument();
+  });
+
   it("hides the shared connections card while the flow editor is in focus mode", async () => {
     vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
 

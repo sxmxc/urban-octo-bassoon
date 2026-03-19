@@ -2,6 +2,18 @@
 
 .DEFAULT_GOAL := help
 
+define docker_optional_env
+$(if $(strip $($(1))),-e $(1)="$($(1))")
+endef
+
+UI_TEST_ADMIN_DOCKER_ENV = \
+	$(call docker_optional_env,UI_TEST_ADMIN_USERNAME) \
+	$(call docker_optional_env,UI_TEST_ADMIN_PASSWORD_FILE) \
+	$(call docker_optional_env,UI_TEST_ADMIN_FULL_NAME) \
+	$(call docker_optional_env,UI_TEST_ADMIN_EMAIL) \
+	$(call docker_optional_env,UI_TEST_ADMIN_AVATAR_URL) \
+	$(call docker_optional_env,UI_TEST_ADMIN_ROLE)
+
 help:
 	@echo "Available targets:"
 	@echo "  make up         # Start services (docker compose up)"
@@ -16,6 +28,7 @@ help:
 	@echo "  make test       # Run backend tests"
 	@echo "  make lint       # Run linting (backend + frontend)"
 	@echo "  make seed       # Seed the database (run migrations + seed)"
+	@echo "  make ui-test-user  # Create or reset a dedicated local admin QA account"
 	@echo "  make clean      # Cleanup generated artifacts"
 
 up:
@@ -47,6 +60,9 @@ logs-prod-local:
 
 seed:
 	docker compose run --rm api sh ./scripts/seed.sh
+
+ui-test-user:
+	docker compose run --rm $(UI_TEST_ADMIN_DOCKER_ENV) api python -m scripts.create_test_admin
 
 test:
 	docker compose run --rm api pytest

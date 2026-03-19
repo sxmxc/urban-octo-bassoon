@@ -28,9 +28,11 @@ from sqlmodel import Session
 import app.db as db_module
 import app.services.admin_auth as admin_auth_module
 import app.services.route_runtime as route_runtime_module
+import scripts.create_test_admin as create_test_admin_script
 from app.db import create_db_and_tables, engine
 from app.main import app
 from app.models import EndpointDefinition, RouteDeployment
+from scripts.create_test_admin import ensure_test_admin_user
 from scripts.seed import DEVICE_MODELS
 
 
@@ -1504,6 +1506,90 @@ def test_bootstrap_password_must_be_rotated_before_admin_access(empty_db):
         },
     )
     assert stale_login_response.status_code == 401
+
+
+def test_ensure_test_admin_user_creates_and_updates_a_dedicated_qa_account(empty_db):
+    with Session(engine) as session:
+        created = ensure_test_admin_user(
+            session,
+            username="ui-agent",
+            password="ui-agent-password-123",
+            full_name="UI Test Agent",
+            email="ui-agent@example.com",
+            role="editor",
+            must_change_password=False,
+        )
+        created_user = admin_auth_module.get_admin_user_by_username(session, "ui-agent")
+
+        assert created.action == "created"
+        assert created.generated_password is False
+        assert created.password == "ui-agent-password-123"
+        assert created_user is not None
+        assert created_user.full_name == "UI Test Agent"
+        assert created_user.email == "ui-agent@example.com"
+        assert created_user.role == "editor"
+        assert created_user.is_active is True
+        assert created_user.must_change_password is False
+        assert admin_auth_module.verify_password("ui-agent-password-123", created_user.password_hash)
+
+        updated = ensure_test_admin_user(
+            session,
+            username="ui-agent",
+            password="ui-agent-password-456",
+            full_name="UI Reviewer",
+            email="ui-reviewer@example.com",
+            role="superuser",
+            must_change_password=False,
+        )
+        updated_user = admin_auth_module.get_admin_user_by_username(session, "ui-agent")
+
+        assert updated.action == "updated"
+        assert updated.generated_password is False
+        assert updated.password == "ui-agent-password-456"
+        assert updated_user is not None
+        assert updated_user.full_name == "UI Reviewer"
+        assert updated_user.email == "ui-reviewer@example.com"
+        assert updated_user.role == "superuser"
+        assert updated_user.is_active is True
+        assert updated_user.must_change_password is False
+        assert admin_auth_module.verify_password("ui-agent-password-456", updated_user.password_hash)
+
+
+def test_ensure_test_admin_user_rejects_shared_or_non_test_usernames(empty_db):
+    with Session(engine) as session:
+        with pytest.raises(ValueError, match="bootstrap admin account"):
+            ensure_test_admin_user(
+                session,
+                username="admin",
+                password="admin-password-123",
+                must_change_password=False,
+            )
+
+        with pytest.raises(ValueError, match="must start with one of"):
+            ensure_test_admin_user(
+                session,
+                username="reviewer",
+                password="reviewer-password-123",
+                must_change_password=False,
+            )
+
+
+def test_create_test_admin_parser_preserves_defaults_when_env_vars_are_blank(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv(create_test_admin_script.USERNAME_ENV, "")
+    monkeypatch.setenv(create_test_admin_script.PASSWORD_FILE_ENV, "   ")
+    monkeypatch.setenv(create_test_admin_script.FULL_NAME_ENV, "")
+    monkeypatch.setenv(create_test_admin_script.EMAIL_ENV, "")
+    monkeypatch.setenv(create_test_admin_script.AVATAR_URL_ENV, "   ")
+    monkeypatch.setenv(create_test_admin_script.ROLE_ENV, "")
+
+    args = create_test_admin_script._build_parser().parse_args([])
+
+    assert args.username == create_test_admin_script.DEFAULT_USERNAME
+    assert args.password_file is None
+    assert args.full_name == create_test_admin_script.DEFAULT_FULL_NAME
+    assert args.email is None
+    assert args.avatar_url is None
+    assert args.role == create_test_admin_script.DEFAULT_ROLE.value
 
 
 def test_admin_account_profile_endpoints_update_the_current_user(empty_db):

@@ -1,5 +1,15 @@
 # DECISIONS
 
+## 2026-03-19: Local browser QA should reuse the running stack and dedicated QA accounts
+- **Stack verification**: Before browser-driven verification, check whether the local Compose stack is already serving the app via `docker compose ps --format json`, `http://localhost:3000`, and `http://localhost:8000/api/health` instead of blindly rerunning bootstrap commands.
+- **Port safety**: Reuse a healthy running stack when possible; do not bounce containers or try to reclaim the same ports just to get a fresh browser session.
+- **Auth workflow**: Browser-driven QA should sign in through the normal admin login flow with a dedicated `make ui-test-user` account, keeping `editor` as the default role and using `superuser` only for superuser-only flows.
+
+## 2026-03-18: Test surfaces must separate contract preview from live/public execution
+- **Operator workflow**: Keep the route `Test` journey, but make it explicit that admin contract preview and live/public requests are two different actions with different runtime guarantees.
+- **Contract boundary**: Route testers may generate schema-driven examples from `request_schema` / `response_schema` and preview inputs, but that preview path must remain admin-only and must not imply live connector or deployment execution.
+- **Live-state labeling**: The workspace and dedicated tester should summarize whether a route is still on the legacy mock path, currently served by an active deployment, disabled entirely, or stuck behind draft-only runtime history with no active deployment, so operators can tell when a live request will execute runtime code versus return `404`.
+
 ## 2026-03-18: Runtime-managed routes are public only through active deployments
 - **Boundary trigger**: Once a route has entered the live-runtime lifecycle by saving a `RouteImplementation` or creating a `RouteDeployment`, stop treating the plain enabled endpoint row as sufficient for public docs or legacy mock dispatch.
 - **Public surfaces**: Use one shared backend selector for OpenAPI, `/api/reference.json`, and legacy mock fallback so runtime-managed routes disappear from those public surfaces unless they still have an active deployment.

@@ -60,6 +60,7 @@ Already shipped:
   - `Flow`
   - `Test`
   - `Deploy`
+- a clearer `Test` journey and dedicated route tester that now separate admin contract previews from live/public requests and label live versus draft runtime state explicitly
 - Flow-tab inspector support for binding HTTP and Postgres nodes to saved shared connections
 - Flow-tab branch-aware logic editing for first-class `If` / `Switch` nodes
 - shared public-route policy across OpenAPI, `/api/reference.json`, and legacy mock fallback so runtime-managed routes stay public only while they still have an active deployment
@@ -68,27 +69,17 @@ Already shipped:
 Still transitional:
 - the public runtime still falls back to the legacy schema-driven mock path for routes that have not yet entered the live-runtime lifecycle
 - the new Vue Flow editor now supports branching, but it still leans on raw JSON entry instead of richer drag/drop data mapping, pinned sample data, or node-level input/output previews
-- the `Test` journey still blurs preview/example output with draft/live runtime language, which is the next product-trust gap to close
 - OpenAPI and `/api/reference.json` now follow the shared public-route policy for runtime-managed routes, but legacy-only routes still remain public until the product fully cuts over to deployment-only publishing
 
 ## Recommended Implementation Order
 
-### 1. Make the `Test` journey honest
-
-Clarify what operators are seeing before expanding more runtime/operator tooling.
-
-Target:
-- clearly separate schema preview/examples from live runtime execution
-- label draft, published, and disabled-live deployment states consistently across the route workspace
-- avoid implying that a saved draft or schema preview is already serving public traffic
-
-### 2. Fix runtime-aware route deletion
+### 1. Fix runtime-aware route deletion
 
 After the `Test` honesty pass:
 - allow deleting routes that already have implementations, deployments, and execution history
 - keep the deletion behavior explicit and safe rather than relying on manual database cleanup
 
-### 3. Improve operator surfaces
+### 2. Improve operator surfaces
 
 After the above:
 - connection management UI
@@ -115,10 +106,9 @@ Do not:
 
 ## Current Hotspots
 
-If the next task is `Test` journey honesty, start here:
-- `apps/admin-web/src/views/EndpointsView.vue`
-- `apps/admin-web/src/api/admin.ts`
+If the next task is route deletion, start here:
 - `apps/api/app/routes/admin.py`
+- `apps/api/app/services/route_runtime.py`
 - `apps/api/tests/test_api.py`
 
 If the next task is connector/operator follow-up, start here:

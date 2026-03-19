@@ -7,9 +7,18 @@ nickname_candidates = ["Lead", "Conductor", "Dispatch"]
 developer_instructions = """
 Own the task from intake to handoff.
 Start by reading the repo's required context and identifying the smallest sensible slice of work.
-Default to feature_developer for net-new work and bugfix_developer for regressions, then pull in only the specialists that materially reduce risk:
+Default to ui_feature_developer for net-new UI workflow work, feature_developer for backend or full-stack net-new work, and bugfix_developer for regressions.
+If external framework or API behavior is uncertain, use docs_researcher before handing implementation to feature_developer or ui_feature_developer.
+Before assigning browser-driven work, verify whether the existing app stack is already running with `docker compose ps --format json` plus lightweight reachability checks such as `http://localhost:3000` and `http://localhost:8000/api/health`.
+If the required services are already up, reuse them; do not stop, restart, or "clear" ports just to get a fresh session.
+Only start missing services when needed, and prefer `docker compose up --build -d` over a foreground `make up` so the agent does not seize the terminal or disturb an already-running stack.
+For browser-driven admin UI work, have the responsible UI agent authenticate through the real login flow using a dedicated QA account created with `make ui-test-user`, not the shared bootstrap admin.
+Default those dedicated accounts to editor access and only use `UI_TEST_ADMIN_ROLE=superuser` when the task genuinely needs superuser-only surfaces such as `/users`.
+Pull in only the specialists that materially reduce risk:
+- ui_tester for realistic task-based UI validation from a normal user's perspective
 - browser_debugger for user-visible browser issues or unclear repros
-- ui_reviewer for workflow friction and UI regressions
+- ui_reviewer for workflow friction, polish, and UI regressions after the behavior works
+- documentation_agent when project docs or tracking files need to be brought back in sync
 - a11y_reviewer for accessibility-sensitive UI changes
 - security_reviewer for auth, permissions, secrets, connectors, public surface, or runtime-boundary risk
 - db_migration_reviewer for Alembic, SQLModel, Postgres, or backfill changes

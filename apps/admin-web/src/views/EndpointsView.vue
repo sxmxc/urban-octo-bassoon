@@ -36,6 +36,7 @@ import type {
   RouteImplementation,
 } from "../types/endpoints";
 import { normalizeRouteFlowDefinition, serializeRouteFlowDefinition } from "../utils/routeFlow";
+import { buildRouteTestState } from "../utils/routeTestState";
 import {
   buildPayload,
   createDuplicateDraft,
@@ -258,6 +259,9 @@ const isFlowDirty = computed(
 );
 const activeDeployment = computed(() => deployments.value.find((deployment) => deployment.is_active) ?? null);
 const hasDeploymentHistory = computed(() => deployments.value.length > 0);
+const routeTestState = computed(() =>
+  selectedEndpoint.value ? buildRouteTestState(selectedEndpoint.value, currentImplementation.value, deployments.value) : null,
+);
 const deploymentStatusTitle = computed(() => {
   return activeDeployment.value ? "Active deployment" : "Live status";
 });
@@ -1429,7 +1433,7 @@ const activeTitle = computed(() => {
                               variant="tonal"
                               @click="openPreview"
                             >
-                              Open test console
+                              Open route tester
                             </v-btn>
                             <v-btn prepend-icon="mdi-refresh" variant="text" @click="refreshRouteRuntimeScaffolding">
                               Refresh
@@ -1441,8 +1445,60 @@ const activeTitle = computed(() => {
                       <v-divider />
 
                       <v-card-text class="d-flex flex-column ga-4">
+                        <v-row>
+                          <v-col cols="12" md="4">
+                            <v-sheet class="schema-summary-card" rounded="xl">
+                              <div class="text-overline text-medium-emphasis">Contract preview</div>
+                              <div class="text-h6">{{ routeTestState?.previewHeadline ?? "Schema-driven preview" }}</div>
+                              <div class="text-body-2 text-medium-emphasis">
+                                {{ routeTestState?.previewSummary }}
+                              </div>
+                            </v-sheet>
+                          </v-col>
+                          <v-col cols="12" md="4">
+                            <v-sheet class="schema-summary-card" rounded="xl">
+                              <div class="d-flex flex-wrap align-center justify-space-between ga-2">
+                                <div class="text-overline text-medium-emphasis">Live request path</div>
+                                <v-chip
+                                  v-if="routeTestState"
+                                  :color="routeTestState.liveStatusColor"
+                                  label
+                                  size="small"
+                                  variant="tonal"
+                                >
+                                  {{ routeTestState.liveStatusLabel }}
+                                </v-chip>
+                              </div>
+                              <div class="text-h6">{{ routeTestState?.liveHeadline ?? "Live/public request state" }}</div>
+                              <div class="text-body-2 text-medium-emphasis">
+                                {{ routeTestState?.liveSummary }}
+                              </div>
+                            </v-sheet>
+                          </v-col>
+                          <v-col cols="12" md="4">
+                            <v-sheet class="schema-summary-card" rounded="xl">
+                              <div class="d-flex flex-wrap align-center justify-space-between ga-2">
+                                <div class="text-overline text-medium-emphasis">Draft vs live</div>
+                                <v-chip
+                                  v-if="routeTestState"
+                                  :color="routeTestState.currentDraftBadgeColor"
+                                  label
+                                  size="small"
+                                  variant="tonal"
+                                >
+                                  {{ routeTestState.currentDraftBadgeLabel }}
+                                </v-chip>
+                              </div>
+                              <div class="text-h6">{{ routeTestState?.draftHeadline ?? "Current flow draft" }}</div>
+                              <div class="text-body-2 text-medium-emphasis">
+                                {{ routeTestState?.draftSummary }}
+                              </div>
+                            </v-sheet>
+                          </v-col>
+                        </v-row>
+
                         <v-alert border="start" color="info" variant="tonal">
-                          Contract previews still use the schema-driven example engine. Live execution history below comes from published route implementations.
+                          The route tester compares an admin-only contract preview with real public requests. Only published live deployments can create execution traces below.
                         </v-alert>
 
                         <v-skeleton-loader
@@ -1451,10 +1507,13 @@ const activeTitle = computed(() => {
                         />
 
                         <div v-else-if="executions.length === 0" class="text-body-2 text-medium-emphasis">
-                          No live executions yet. Publish the route, send a request, then return here to inspect the trace history.
+                          {{ routeTestState?.executionsEmptyState ?? "No live executions yet." }}
                         </div>
 
                         <div v-else class="d-flex flex-column ga-3">
+                          <div class="text-body-2 text-medium-emphasis">
+                            Execution history only appears for published live implementations. Legacy mock traffic does not write runtime traces here.
+                          </div>
                           <v-sheet
                             v-for="execution in executions"
                             :key="execution.id"
@@ -1482,7 +1541,7 @@ const activeTitle = computed(() => {
                             <div class="d-flex flex-wrap ga-3 mt-3 text-body-2 text-medium-emphasis">
                               <span>Status code: {{ execution.response_status_code ?? "n/a" }}</span>
                               <span>Environment: {{ execution.environment }}</span>
-                              <span>Implementation: {{ execution.implementation_id ?? "draft" }}</span>
+                              <span>Published implementation: {{ execution.implementation_id ?? "n/a" }}</span>
                             </div>
                           </v-sheet>
                         </div>

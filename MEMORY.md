@@ -32,13 +32,15 @@ Provide a Docker-first, route-first API platform with a polished public-facing s
 
 ## Current Status Snapshot
 - Docker Compose starts a working Postgres, FastAPI API, and Vite admin app with `make up`.
+- The `make ui-test-user` bootstrap helper now preserves its argparse defaults when `UI_TEST_ADMIN_*` variables are unset or blank, so the documented zero-config QA-account flow no longer fails on blank username/role env injection.
 - The backend exposes session-authenticated admin routes, DB-backed dashboard-user management, forced password rotation for bootstrap/reset credentials, deployment-backed live runtime dispatch, legacy DB-driven mock fallback for legacy-only routes, live OpenAPI generation, and an authenticated response preview endpoint.
 - The backend now persists `RouteImplementation`, `RouteDeployment`, `Connection`, `ExecutionRun`, and `ExecutionStep` records, with an Alembic migration that bootstraps those tables into existing databases.
 - The public runtime now compiles active deployments into an in-memory matcher cache and records per-request execution traces when a live implementation handles the route.
 - The live runtime now also executes `if_condition` / `switch` branch nodes plus `http_request` and `postgres_query` nodes against shared `Connection` records, records summarized connector traces, and returns connector/runtime failures instead of silently falling back to the legacy mock path.
 - The route `Overview` surface once again shows the route identity form plus the create/save actions, so operators can use the normal create/edit journey without leaving the tabbed workspace.
-- The same audit confirmed that Flow `Transform` string authoring still saves inline `{{...}}` references literally at runtime, the `Test` console still mixes schema/example preview behavior with published runtime language, and route deletion fails once `RouteImplementation` / `RouteDeployment` / execution records reference the route.
+- The same audit confirmed that Flow `Transform` string authoring still saves inline `{{...}}` references literally at runtime, and route deletion still fails once `RouteImplementation` / `RouteDeployment` / execution records reference the route.
 - The deploy surface now supports both publish and disable-live actions. Unpublishing deactivates the active `RouteDeployment`, removes the route from runtime-managed public surfaces, and keeps the route definition plus saved implementation history intact.
+- The route `Test` workspace and dedicated tester now split contract preview from live/public execution more honestly: the workspace shows separate preview/live/draft state summaries, and the tester has distinct `Generate contract preview` and `Send live request` actions so operators can compare schema-driven examples against deployment-backed or legacy public responses without conflating them.
 - The schema studio and Flow palette interactions still rely on native browser drag/drop plus custom ghost helpers today; product direction now requires moving those bespoke surfaces onto a maintained drag-and-drop library with real drag overlays and richer copy/move behavior.
 - The admin account deletion path now removes all historical `adminsession` rows before deleting the user, so revoked or expired logins cannot strand dashboard accounts behind Postgres foreign-key errors.
 - The backend now reserves `/api/admin` plus other system-owned public paths like `/api` and `/api/reference.json`, so DB-defined public routes cannot trespass into private or framework-owned route space.
@@ -161,12 +163,15 @@ Provide a Docker-first, route-first API platform with a polished public-facing s
 ## Notes for Next Agent
 - Read `docs/roadmap.md` first for the intended sequence and current architectural boundaries.
 - Keep tasks updated in `TASKS.md` as progress is made.
-- The shared public-route policy now has an explicit admin unpublish path, so the next meaningful product follow-up is making the `Test` journey honest about preview/example output versus draft/live runtime execution.
-- After the `Test` journey pass, prioritize safe route deletion for runtime-managed routes and then the remaining Flow/operator tooling such as connection management and data mapping.
+- The shared public-route policy now has an explicit admin unpublish path, and the `Test` journey now separates admin contract preview from live/public request execution, so the next meaningful product follow-up is safe route deletion for runtime-managed routes.
+- After the route-deletion pass, prioritize the remaining Flow/operator tooling such as connection management and data mapping.
 - The Flow full-editor now has a much better canvas shell, but local browser QA still needs a current admin credential; the stale `ADMIN_USERNAME` / `ADMIN_PASSWORD` pair in `.env` no longer signs into the current dev database.
 - The next UX-heavy Flow follow-up should focus on data mapping and sample-data visibility rather than adding more trigger types; `api_trigger` remains the only entry node for now.
-- Prioritize the remaining audited UX blockers first: make `Test` clearly separate preview from live execution, add real string/data composition in Flow, show each node's incoming/outgoing shape, support caret-based helper-pill insertion in JSON fields, and make route deletion cascade safely through runtime records.
+- Prioritize the remaining audited UX blockers first: make route deletion cascade safely through runtime records, add real string/data composition in Flow, show each node's incoming/outgoing shape, and support caret-based helper-pill insertion in JSON fields.
 - Browser QA should use a dedicated non-shared dashboard account instead of modifying the shared `admin` login during local verification.
+- Local browser/UI QA can now mint or reset that dedicated account with `make ui-test-user`, which runs an idempotent backend helper inside Docker, requires a dedicated test-style username (`ui-` / `qa-` / `test-`), and can generate a password if none is supplied.
+- Local browser/UI QA should first verify whether the existing Compose stack is already serving `http://localhost:3000` and `http://localhost:8000/api/health`; if it is, reuse it instead of restarting the stack or disturbing the current port bindings.
+- Browser-driven QA should use the real admin login flow with a dedicated QA account rather than API shortcuts or the shared bootstrap admin.
 - Any future response-authoring experiments should preserve the schema studio's drag/drop pill-tree workflow, `x-builder.order` ordering, and the array `Item shape` model instead of falling back to a raw template-text editor.
 - If templating changes again, browser QA should verify that path/query/body-backed template previews in the schema studio still match the public runtime output.
 - Browser QA for catalog refresh should confirm that background sync updates non-selected routes, retains the last good list on refresh errors, and does not reset a dirty selected route form mid-edit.

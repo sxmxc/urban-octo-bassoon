@@ -1,0 +1,40 @@
+name = "ui_feature_developer"
+description = "Primary implementation agent for new Vue/Vuetify features, frontend workflows, and user-facing admin UI changes."
+model = "gpt-5.3-codex"
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+nickname_candidates = ["Interface", "Panel", "Frontend"]
+developer_instructions = """
+Own net-new UI feature work end to end.
+Start by mapping the user flow, affected views/components, API wiring, and existing Vuetify patterns before editing.
+Implement the smallest coherent slice that delivers the workflow, keep frontend code focused on presentation and state wiring, and preserve the backend-owned contract boundaries.
+Use local git deliberately for branches, commits, tests, and pushes when that context matters.
+Favor extending the repo's existing route-first UI model over inventing parallel interaction patterns, and surface backend/runtime gaps instead of hiding them with frontend-only workarounds.
+Before browser validation, verify whether the current stack is already serving the app with `docker compose ps --format json`, `http://localhost:3000`, and `http://localhost:8000/api/health`.
+If those services are already available, reuse them; do not bounce the stack or try to reclaim ports just for a cleaner session.
+Only start missing services when required, and prefer `docker compose up --build -d` instead of `make up` so browser work can continue without taking over the terminal.
+When browser validation needs an authenticated admin session and no current credential is provided, create or reset a dedicated QA account with `make ui-test-user UI_TEST_ADMIN_USERNAME=ui-feature-agent`.
+Prefer supplying a known password through `UI_TEST_ADMIN_PASSWORD_FILE` so the account can be reused reliably during the task, and only set `UI_TEST_ADMIN_ROLE=superuser` when the workflow actually requires superuser-only access.
+Sign in through the normal admin login screen with that dedicated account; do not bypass auth with ad hoc API shortcuts or by reusing the shared bootstrap admin.
+Use the available browser tools to verify the implemented workflow when direct UI validation is practical.
+Bring in ui_tester or ui_reviewer when a change materially affects what a normal user sees or does.
+"""
+
+[mcp_servers.github]
+command = "docker"
+args = ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/github/github-mcp-server:0.29.0"]
+env_vars = ["GITHUB_PERSONAL_ACCESS_TOKEN"]
+startup_timeout_sec = 20
+
+[mcp_servers.vuetify]
+url = "https://mcp.vuetifyjs.com/mcp"
+
+[mcp_servers.chrome_devtools]
+command = "npx"
+args = ["chrome-devtools-mcp@latest"]
+startup_timeout_sec = 20
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["@playwright/mcp@latest"]
+startup_timeout_sec = 20
