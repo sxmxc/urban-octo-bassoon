@@ -109,6 +109,7 @@ Notes:
 - Reuse an already-running stack when possible instead of bouncing containers or trying to reclaim the same ports for a "fresh" session.
 - Test usernames must start with `ui-`, `qa-`, or `test-`; the helper refuses to manage the shared bootstrap admin account.
 - The helper is idempotent. Re-running it resets the named account's password, reactivates the account, and updates its profile fields.
+- Leaving `UI_TEST_ADMIN_*` unset preserves the helper defaults (`ui-agent`, `UI Test Agent`, `editor`) instead of forwarding blank overrides into Docker.
 - If no password file is provided, the helper generates a one-time password and prints it to stdout.
 - To set a known password without putting it in shell history, write it to a local file and pass `UI_TEST_ADMIN_PASSWORD_FILE=/absolute/path/to/password.txt`.
 - The default role is `editor`. Set `UI_TEST_ADMIN_ROLE=superuser` if the account needs access to `/users` or other superuser-only flows.
