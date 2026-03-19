@@ -137,6 +137,7 @@ The admin import/export flow still uses a native Mockingbird JSON bundle for bac
 - Each bundled endpoint stores the editable route contract, including request/response schemas and runtime simulation settings, but excludes DB-only fields such as `id`, `created_at`, and `updated_at`.
 - V1 imports match existing routes by normalized `method + path`; `slug` remains an internal field that can be de-duplicated during import.
 - Supported import modes are `create_only`, `upsert`, and `replace_all`, with dry-run previews available before any changes are applied.
+- Confirmed route deletion, including route removal triggered by `replace_all`, explicitly clears `ExecutionStep`, `ExecutionRun`, `RouteDeployment`, and `RouteImplementation` rows before deleting the `EndpointDefinition`.
 
 ## AdminUser
 Represents a dashboard user who can sign into the private admin UI and API.

@@ -65,6 +65,7 @@ Already shipped:
 - Flow-tab branch-aware logic editing for first-class `If` / `Switch` nodes
 - shared public-route policy across OpenAPI, `/api/reference.json`, and legacy mock fallback so runtime-managed routes stay public only while they still have an active deployment
 - explicit disable-live workflow in the admin API and `Deploy` tab, which deactivates the active deployment without deleting route or implementation history
+- runtime-aware route deletion for both direct admin deletes and confirmed `replace_all` imports, including explicit cleanup of runtime history before the route row is removed
 
 Still transitional:
 - the public runtime still falls back to the legacy schema-driven mock path for routes that have not yet entered the live-runtime lifecycle
@@ -73,13 +74,7 @@ Still transitional:
 
 ## Recommended Implementation Order
 
-### 1. Fix runtime-aware route deletion
-
-After the `Test` honesty pass:
-- allow deleting routes that already have implementations, deployments, and execution history
-- keep the deletion behavior explicit and safe rather than relying on manual database cleanup
-
-### 2. Improve operator surfaces
+### 1. Improve operator surfaces
 
 After the above:
 - connection management UI
@@ -105,11 +100,6 @@ Do not:
 - make the preview engine depend on production-only secrets/connections
 
 ## Current Hotspots
-
-If the next task is route deletion, start here:
-- `apps/api/app/routes/admin.py`
-- `apps/api/app/services/route_runtime.py`
-- `apps/api/tests/test_api.py`
 
 If the next task is connector/operator follow-up, start here:
 - `apps/api/app/services/route_runtime.py`

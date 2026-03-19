@@ -38,7 +38,7 @@ Provide a Docker-first, route-first API platform with a polished public-facing s
 - The public runtime now compiles active deployments into an in-memory matcher cache and records per-request execution traces when a live implementation handles the route.
 - The live runtime now also executes `if_condition` / `switch` branch nodes plus `http_request` and `postgres_query` nodes against shared `Connection` records, records summarized connector traces, and returns connector/runtime failures instead of silently falling back to the legacy mock path.
 - The route `Overview` surface once again shows the route identity form plus the create/save actions, so operators can use the normal create/edit journey without leaving the tabbed workspace.
-- The same audit confirmed that Flow `Transform` string authoring still saves inline `{{...}}` references literally at runtime, and route deletion still fails once `RouteImplementation` / `RouteDeployment` / execution records reference the route.
+- The same audit confirmed that Flow `Transform` string authoring still saves inline `{{...}}` references literally at runtime, while route deletion now explicitly clears `RouteImplementation`, `RouteDeployment`, `ExecutionRun`, and `ExecutionStep` records so runtime-managed routes can be removed cleanly from both the admin delete action and `replace_all` imports.
 - The deploy surface now supports both publish and disable-live actions. Unpublishing deactivates the active `RouteDeployment`, removes the route from runtime-managed public surfaces, and keeps the route definition plus saved implementation history intact.
 - The route `Test` workspace and dedicated tester now split contract preview from live/public execution more honestly: the workspace shows separate preview/live/draft state summaries, and the tester has distinct `Generate contract preview` and `Send live request` actions so operators can compare schema-driven examples against deployment-backed or legacy public responses without conflating them.
 - The schema studio and Flow palette interactions still rely on native browser drag/drop plus custom ghost helpers today; product direction now requires moving those bespoke surfaces onto a maintained drag-and-drop library with real drag overlays and richer copy/move behavior.
@@ -140,7 +140,7 @@ Provide a Docker-first, route-first API platform with a polished public-facing s
 ## Known Risks
 - Live OpenAPI generation may become slow if not cached.
 - The publish boundary is now tighter for runtime-managed routes, but legacy-only routes still remain public until they enter the live-runtime lifecycle, so the final "published routes only" cut is still a future product decision.
-- Unpublish is currently an environment-scoped deployment toggle, not a deletion workflow; the route-definition deletion path still needs a safe cascade strategy across implementations, deployments, and executions.
+- Route deletion now hard-deletes runtime implementations, deployments, and execution history alongside the route definition itself, so any future audit-retention requirement would need an explicit archive/export workflow instead of assuming deleted traces remain queryable.
 - Drag-and-drop schema editing is meaningfully more complex than the old textarea editor, so tree-state regressions are still worth watching closely.
 - The new pill-tree canvas depends on small icon-only insertion anchors, so future UX passes should keep keyboard/accessibility affordances in view while refining drag/drop.
 - A canvas-first pivot could make JSON Schema editing feel too abstract if node placement and edges drift away from the stored parent/child contract, so prototypes should keep the mapping between canvas visuals and schema structure obvious.
@@ -163,11 +163,11 @@ Provide a Docker-first, route-first API platform with a polished public-facing s
 ## Notes for Next Agent
 - Read `docs/roadmap.md` first for the intended sequence and current architectural boundaries.
 - Keep tasks updated in `TASKS.md` as progress is made.
-- The shared public-route policy now has an explicit admin unpublish path, and the `Test` journey now separates admin contract preview from live/public request execution, so the next meaningful product follow-up is safe route deletion for runtime-managed routes.
-- After the route-deletion pass, prioritize the remaining Flow/operator tooling such as connection management and data mapping.
+- The shared public-route policy now has an explicit admin unpublish path, the `Test` journey now separates admin contract preview from live/public request execution, and route deletion now clears runtime history cleanly; the next meaningful product follow-up is Flow/operator tooling.
+- After the route-deletion pass, prioritize the remaining Flow/operator tooling such as the maintained drag-and-drop migration, connection management, and data mapping.
 - The Flow full-editor now has a much better canvas shell, but local browser QA still needs a current admin credential; the stale `ADMIN_USERNAME` / `ADMIN_PASSWORD` pair in `.env` no longer signs into the current dev database.
 - The next UX-heavy Flow follow-up should focus on data mapping and sample-data visibility rather than adding more trigger types; `api_trigger` remains the only entry node for now.
-- Prioritize the remaining audited UX blockers first: make route deletion cascade safely through runtime records, add real string/data composition in Flow, show each node's incoming/outgoing shape, and support caret-based helper-pill insertion in JSON fields.
+- Prioritize the remaining audited UX blockers first: add real string/data composition in Flow, show each node's incoming/outgoing shape, support caret-based helper-pill insertion in JSON fields, and replace the remaining bespoke drag/drop interactions with a maintained library.
 - Browser QA should use a dedicated non-shared dashboard account instead of modifying the shared `admin` login during local verification.
 - Local browser/UI QA can now mint or reset that dedicated account with `make ui-test-user`, which runs an idempotent backend helper inside Docker, requires a dedicated test-style username (`ui-` / `qa-` / `test-`), and can generate a password if none is supplied.
 - Local browser/UI QA should first verify whether the existing Compose stack is already serving `http://localhost:3000` and `http://localhost:8000/api/health`; if it is, reuse it instead of restarting the stack or disturbing the current port bindings.

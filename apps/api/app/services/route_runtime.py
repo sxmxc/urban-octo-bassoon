@@ -9,7 +9,7 @@ from urllib.parse import unquote, urljoin
 import httpx
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from sqlalchemy import desc
+from sqlalchemy import delete, desc
 from sqlmodel import Session, select
 
 from app.models import (
@@ -1992,6 +1992,17 @@ def list_execution_runs(session: Session, *, route_id: int | None = None, limit:
         statement = statement.where(ExecutionRun.route_id == route_id)
     statement = statement.order_by(desc(ExecutionRun.started_at), desc(ExecutionRun.id)).limit(limit)
     return list(session.execute(statement).scalars())
+
+
+def delete_route_runtime_records(session: Session, route_id: int) -> None:
+    if route_id <= 0:
+        return
+
+    run_ids = select(ExecutionRun.id).where(ExecutionRun.route_id == route_id)
+    session.execute(delete(ExecutionStep).where(ExecutionStep.run_id.in_(run_ids)))
+    session.execute(delete(ExecutionRun).where(ExecutionRun.route_id == route_id))
+    session.execute(delete(RouteDeployment).where(RouteDeployment.route_id == route_id))
+    session.execute(delete(RouteImplementation).where(RouteImplementation.route_id == route_id))
 
 
 def get_execution_run_detail(session: Session, run_id: int) -> ExecutionRunDetail | None:

@@ -55,10 +55,11 @@ The current milestone is the **first branch-aware live-flow slice**:
 5. Routes with no runtime records still use the existing preview/mock generator during the transition, but routes with saved runtime records are hidden from public fallback unless an active deployment exists.
 6. The public landing page and `/api/reference.json` read from that same shared public-route policy, including generated request/response examples.
 7. OpenAPI schema is generated from the same shared public-route policy and served on `/openapi.json`.
+8. Deleting a route now explicitly clears runtime implementations, deployments, execution runs, and execution steps before removing the route-definition row, and the same cleanup path is used by confirmed `replace_all` imports.
 
 ## Immediate next step
 
-The next major implementation task should be runtime-aware route deletion:
-- allow removing routes that already have implementations, deployments, and execution history without manual database cleanup
-- keep the preview/runtime split intact while deletion work lands, so contract previews stay schema-driven and live/public execution stays deployment-backed
-- after that, deepen Flow UX around data mapping, input/output previews, and pinned sample data rather than adding non-API trigger families
+The next major implementation task should deepen the operator surface:
+- replace the remaining bespoke drag/drop interactions with a maintained library that supports overlays plus richer drop semantics
+- add connection-management, data-mapping, and sample-data tooling to the Flow workspace
+- keep the preview/runtime split intact while those UX passes land, so contract previews stay schema-driven and live/public execution stays deployment-backed

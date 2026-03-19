@@ -11,10 +11,10 @@ Stay focused on observable behavior, likely owning files, and user-visible impac
 Do not edit application code.
 """
 
-[mcp_servers.chrome_devtools]
-command = "npx"
-args = ["chrome-devtools-mcp@latest"]
-startup_timeout_sec = 20
+# [mcp_servers.chrome_devtools]
+# command = "npx"
+# args = ["chrome-devtools-mcp@latest"]
+# startup_timeout_sec = 20
 
 [mcp_servers.playwright]
 command = "npx"

@@ -499,7 +499,7 @@ def _apply_endpoint_import_plan(session: Session, actions: list[_EndpointImportP
 
     for action in actions:
         if action.action == "delete" and action.endpoint is not None:
-            session.delete(action.endpoint)
+            delete_endpoint(session, action.endpoint, commit=False)
 
     session.commit()
 

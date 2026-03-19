@@ -4,10 +4,9 @@ This file tracks the work needed to bootstrap and evolve the project.
 Read `docs/roadmap.md` alongside this file if you are picking up the next implementation slice.
 
 ## Now
-- [ ] Fix route deletion so published routes with implementations, deployments, and executions can be removed cleanly from the UI and admin API
+- [ ] Replace native HTML5 `dragstart` / `drop` / `dataTransfer` usage in bespoke editor surfaces with a maintained drag-and-drop library that supports drag overlays, copy/move semantics, and richer drop hooks
 
 ## Next
-- [ ] Replace native HTML5 `dragstart` / `drop` / `dataTransfer` usage in bespoke editor surfaces with a maintained drag-and-drop library that supports drag overlays, copy/move semantics, and richer drop hooks
 - [ ] Add project/environment-aware connection management UI instead of the current route-level placeholder card
 - [ ] Add true Flow data-mapping support so operators can compose strings/objects from request and state data instead of only wiring whole refs
 - [ ] Add per-node input/output data-shape visibility plus pinned sample payload inspection in the Flow designer
@@ -24,6 +23,7 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [ ] (none)
 
 ## Done
+- [x] Fix route deletion so published routes with implementations, deployments, and executions can be removed cleanly from the UI and admin API
 - [x] Preserve `make ui-test-user` helper defaults when `UI_TEST_ADMIN_*` vars are unset or blank in the shell/container env
 - [x] Document the safer local browser-QA workflow around stack reuse, dedicated QA accounts, and real login
 - [x] Make the `Test` journey honest about what is preview/example output versus what is draft/live runtime execution

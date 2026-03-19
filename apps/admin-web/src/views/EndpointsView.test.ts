@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter } from "vue-router";
 import { defineComponent } from "vue";
 import EndpointsView from "./EndpointsView.vue";
 import {
+  deleteEndpoint,
   getCurrentRouteImplementation,
   listConnections,
   listExecutions,
@@ -132,6 +133,7 @@ const EndpointSettingsFormStub = defineComponent({
       <div v-if="showContractCard">
         <div data-testid="identity-fields">Name Method Path</div>
         <button type="button">{{ isCreating ? "Create route" : "Save changes" }}</button>
+        <button type="button" @click="$emit('delete')">Delete route</button>
       </div>
       <div data-testid="draft-name">{{ draft.name }}</div>
       <button type="button" @click="$emit('change', { name: 'Working copy' })">Edit draft</button>
@@ -306,6 +308,7 @@ async function renderView(path: string, mode: "browse" | "create" | "edit") {
 
 describe("EndpointsView", () => {
   beforeEach(() => {
+    vi.mocked(deleteEndpoint).mockReset();
     vi.mocked(getCurrentRouteImplementation).mockReset();
     vi.mocked(listConnections).mockReset();
     vi.mocked(listExecutions).mockReset();
@@ -328,6 +331,7 @@ describe("EndpointsView", () => {
         updated_at: "2026-03-18T00:01:00Z",
       }),
     );
+    vi.mocked(deleteEndpoint).mockResolvedValue(null);
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
       value: "visible",
@@ -440,6 +444,26 @@ describe("EndpointsView", () => {
 
     expect(screen.getByTestId("identity-fields")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+  });
+
+  it("deletes the selected route and returns to browse mode", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    const { router } = await renderView("/endpoints/1", "edit");
+    await flushPromises();
+    const pushSpy = vi.spyOn(router, "push");
+
+    await fireEvent.click(screen.getByRole("button", { name: "Delete route" }));
+    await flushPromises();
+
+    expect(confirmSpy).toHaveBeenCalledWith('Delete "List users" from the catalog?');
+    expect(vi.mocked(deleteEndpoint)).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ token: "session-token" }),
+    );
+    expect(pushSpy).toHaveBeenCalledWith({ name: "endpoints-browse" });
+    expect(screen.getByTestId("catalog-names")).toHaveTextContent("");
   });
 
   it("shows route-first tabs and loads flow scaffolding for an existing route", async () => {

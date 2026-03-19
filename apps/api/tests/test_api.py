@@ -31,7 +31,7 @@ import app.services.route_runtime as route_runtime_module
 import scripts.create_test_admin as create_test_admin_script
 from app.db import create_db_and_tables, engine
 from app.main import app
-from app.models import EndpointDefinition, RouteDeployment
+from app.models import EndpointDefinition, ExecutionRun, ExecutionStep, RouteDeployment, RouteImplementation
 from scripts.create_test_admin import ensure_test_admin_user
 from scripts.seed import DEVICE_MODELS
 
@@ -120,6 +120,34 @@ def _endpoint_payload(*, name: str, path: str, method: str = "GET") -> dict:
         "latency_min_ms": 0,
         "latency_max_ms": 0,
         "seed_key": None,
+    }
+
+
+def _live_route_flow_definition(*, status_code: int = 200, body: dict | None = None) -> dict:
+    return {
+        "schema_version": 1,
+        "nodes": [
+            {"id": "trigger", "type": "api_trigger", "config": {}},
+            {
+                "id": "transform",
+                "type": "transform",
+                "config": {
+                    "output": body or {"status": "live"},
+                },
+            },
+            {
+                "id": "response",
+                "type": "set_response",
+                "config": {
+                    "status_code": status_code,
+                    "body": {"$ref": "state.transform"},
+                },
+            },
+        ],
+        "edges": [
+            {"source": "trigger", "target": "transform"},
+            {"source": "transform", "target": "response"},
+        ],
     }
 
 
@@ -336,6 +364,68 @@ def test_admin_can_unpublish_active_route_without_deleting_definition(empty_db):
         headers=headers,
     )
     assert repeat_unpublish_response.status_code == 409
+
+
+def test_admin_can_delete_runtime_managed_route_and_clear_history(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    create_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="Delete live route", path="/api/delete-live-route"),
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    endpoint = create_response.json()
+
+    update_response = client.put(
+        f"/api/admin/endpoints/{endpoint['id']}/implementation/current",
+        json={"flow_definition": _live_route_flow_definition(body={"status": "deleted"})},
+        headers=headers,
+    )
+    assert update_response.status_code == 200
+
+    publish_response = client.post(
+        f"/api/admin/endpoints/{endpoint['id']}/deployments/publish",
+        json={"environment": "production"},
+        headers=headers,
+    )
+    assert publish_response.status_code == 201
+
+    live_response = client.get("/api/delete-live-route")
+    assert live_response.status_code == 200
+    assert live_response.json() == {"status": "deleted"}
+
+    executions_response = client.get(
+        f"/api/admin/executions?endpoint_id={endpoint['id']}&limit=5",
+        headers=headers,
+    )
+    assert executions_response.status_code == 200
+    execution_id = executions_response.json()[0]["id"]
+
+    delete_response = client.delete(f"/api/admin/endpoints/{endpoint['id']}", headers=headers)
+    assert delete_response.status_code == 204
+
+    assert client.get("/api/delete-live-route").status_code == 404
+    assert client.get(f"/api/admin/endpoints/{endpoint['id']}", headers=headers).status_code == 404
+    assert client.get("/openapi.json").json()["paths"].get("/api/delete-live-route") is None
+    reference_paths = {item["path"] for item in client.get("/api/reference.json").json()["endpoints"]}
+    assert "/api/delete-live-route" not in reference_paths
+
+    with Session(engine) as session:
+        assert session.get(EndpointDefinition, endpoint["id"]) is None
+        assert session.execute(
+            select(RouteImplementation).where(RouteImplementation.route_id == endpoint["id"])
+        ).scalars().all() == []
+        assert session.execute(
+            select(RouteDeployment).where(RouteDeployment.route_id == endpoint["id"])
+        ).scalars().all() == []
+        assert session.execute(
+            select(ExecutionRun).where(ExecutionRun.route_id == endpoint["id"])
+        ).scalars().all() == []
+        assert session.execute(
+            select(ExecutionStep).where(ExecutionStep.run_id == execution_id)
+        ).scalars().all() == []
 
 
 def test_runtime_connections_can_be_created_and_listed(empty_db):
@@ -3169,6 +3259,83 @@ def test_admin_endpoint_import_replace_all_requires_confirmation_and_deletes_mis
     assert replaced_endpoint["seed_key"] is None
     assert replaced_endpoint["created_at"]
     assert replaced_endpoint["updated_at"]
+
+
+def test_admin_endpoint_import_replace_all_deletes_runtime_history_for_removed_routes(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    create_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="Replace me", path="/api/replace-me"),
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    endpoint = create_response.json()
+
+    update_response = client.put(
+        f"/api/admin/endpoints/{endpoint['id']}/implementation/current",
+        json={"flow_definition": _live_route_flow_definition()},
+        headers=headers,
+    )
+    assert update_response.status_code == 200
+
+    publish_response = client.post(
+        f"/api/admin/endpoints/{endpoint['id']}/deployments/publish",
+        json={"environment": "production"},
+        headers=headers,
+    )
+    assert publish_response.status_code == 201
+
+    live_response = client.get("/api/replace-me")
+    assert live_response.status_code == 200
+    assert live_response.json() == {"status": "live"}
+
+    executions_response = client.get(
+        f"/api/admin/executions?endpoint_id={endpoint['id']}&limit=5",
+        headers=headers,
+    )
+    assert executions_response.status_code == 200
+    execution_id = executions_response.json()[0]["id"]
+
+    replace_all_response = client.post(
+        "/api/admin/endpoints/import",
+        json={
+            "bundle": {
+                "schema_version": 1,
+                "product": "Mockingbird",
+                "exported_at": "2026-03-19T00:00:00Z",
+                "endpoints": [
+                    {
+                        **_endpoint_payload(name="Replacement route", path="/api/replacement-route"),
+                        "slug": "replacement-route",
+                    }
+                ],
+            },
+            "mode": "replace_all",
+            "dry_run": False,
+            "confirm_replace_all": True,
+        },
+        headers=headers,
+    )
+    assert replace_all_response.status_code == 200
+    assert replace_all_response.json()["applied"] is True
+    assert replace_all_response.json()["summary"]["delete_count"] == 1
+
+    with Session(engine) as session:
+        assert session.get(EndpointDefinition, endpoint["id"]) is None
+        assert session.execute(
+            select(RouteImplementation).where(RouteImplementation.route_id == endpoint["id"])
+        ).scalars().all() == []
+        assert session.execute(
+            select(RouteDeployment).where(RouteDeployment.route_id == endpoint["id"])
+        ).scalars().all() == []
+        assert session.execute(
+            select(ExecutionRun).where(ExecutionRun.route_id == endpoint["id"])
+        ).scalars().all() == []
+        assert session.execute(
+            select(ExecutionStep).where(ExecutionStep.run_id == execution_id)
+        ).scalars().all() == []
 
 
 def test_admin_endpoint_import_plans_against_catalogs_beyond_the_first_thousand_rows(empty_db):

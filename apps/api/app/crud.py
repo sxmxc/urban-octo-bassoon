@@ -7,6 +7,7 @@ from sqlmodel import Session
 
 from app.models import EndpointDefinition
 from app.schemas import EndpointCreate, EndpointUpdate
+from app.services.route_runtime import delete_route_runtime_records
 from app.time_utils import utc_now
 
 
@@ -47,6 +48,8 @@ def update_endpoint(session: Session, endpoint: EndpointDefinition, endpoint_in:
     return endpoint
 
 
-def delete_endpoint(session: Session, endpoint: EndpointDefinition) -> None:
+def delete_endpoint(session: Session, endpoint: EndpointDefinition, *, commit: bool = True) -> None:
+    delete_route_runtime_records(session, int(endpoint.id or 0))
     session.delete(endpoint)
-    session.commit()
+    if commit:
+        session.commit()

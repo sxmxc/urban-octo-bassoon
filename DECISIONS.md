@@ -1,5 +1,10 @@
 # DECISIONS
 
+## 2026-03-19: Route deletion should explicitly clear runtime records
+- **Operator workflow**: Deleting a route from the admin API or from a confirmed `replace_all` import should succeed even after the route has saved implementations, deployments, and execution history.
+- **Cleanup order**: Explicitly delete `ExecutionStep`, `ExecutionRun`, `RouteDeployment`, and `RouteImplementation` records before removing the `EndpointDefinition`, rather than relying on database-level cascades or manual cleanup.
+- **Surface consistency**: Use the same cleanup path for both direct route deletion and import-driven deletion so runtime-managed routes disappear cleanly from public runtime/docs once the deployment registry is invalidated.
+
 ## 2026-03-19: Local browser QA should reuse the running stack and dedicated QA accounts
 - **Stack verification**: Before browser-driven verification, check whether the local Compose stack is already serving the app via `docker compose ps --format json`, `http://localhost:3000`, and `http://localhost:8000/api/health` instead of blindly rerunning bootstrap commands.
 - **Port safety**: Reuse a healthy running stack when possible; do not bounce containers or try to reclaim the same ports just to get a fresh browser session.
