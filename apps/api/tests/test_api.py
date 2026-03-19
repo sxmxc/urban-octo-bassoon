@@ -302,6 +302,146 @@ def test_route_runtime_scaffolding_endpoints_publish_and_record_executions(empty
     ]
 
 
+def test_live_flow_mapping_can_compose_inline_strings_from_request_and_state(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    create_response = client.post(
+        "/api/admin/endpoints",
+        json={
+            **_endpoint_payload(name="Mapped live route", path="/api/mapped-live/{orderId}", method="POST"),
+            "request_schema": {
+                "type": "object",
+                "properties": {
+                    "customer": {
+                        "type": "object",
+                        "properties": {
+                            "email": {"type": "string", "format": "email"},
+                        },
+                        "required": ["email"],
+                        "x-builder": {"order": ["email"]},
+                    }
+                },
+                "required": ["customer"],
+                "x-builder": {"order": ["customer"]},
+                "x-request": {
+                    "path": {
+                        "type": "object",
+                        "properties": {
+                            "orderId": {"type": "string"},
+                        },
+                        "required": ["orderId"],
+                        "x-builder": {"order": ["orderId"]},
+                    },
+                    "query": {
+                        "type": "object",
+                        "properties": {
+                            "status": {"type": "string"},
+                        },
+                        "x-builder": {"order": ["status"]},
+                    },
+                },
+            },
+            "success_status_code": 201,
+        },
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    endpoint = create_response.json()
+
+    update_implementation_response = client.put(
+        f"/api/admin/endpoints/{endpoint['id']}/implementation/current",
+        json={
+            "flow_definition": {
+                "schema_version": 1,
+                "nodes": [
+                    {"id": "trigger", "type": "api_trigger", "config": {}},
+                    {
+                        "id": "transform",
+                        "type": "transform",
+                        "config": {
+                            "output": {
+                                "receipt": (
+                                    "order={{request.path.orderId}} "
+                                    "status={{request.query.status}} "
+                                    "email={{request.body.customer.email}}"
+                                ),
+                                "route_line": "{{route.method}} {{route.path}}",
+                                "customer_email": {"$ref": "request.body.customer.email"},
+                            }
+                        },
+                    },
+                    {
+                        "id": "response",
+                        "type": "set_response",
+                        "config": {
+                            "status_code": "{{route.success_status_code}}",
+                            "body": {
+                                "summary": "{{state.transform.receipt}}",
+                                "route": "{{state.transform.route_line}}",
+                                "email": {"$ref": "state.transform.customer_email"},
+                            },
+                        },
+                    },
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "transform"},
+                    {"source": "transform", "target": "response"},
+                ],
+            }
+        },
+        headers=headers,
+    )
+    assert update_implementation_response.status_code == 200
+
+    publish_response = client.post(
+        f"/api/admin/endpoints/{endpoint['id']}/deployments/publish",
+        json={"environment": "production"},
+        headers=headers,
+    )
+    assert publish_response.status_code == 201
+
+    runtime_response = client.post(
+        "/api/mapped-live/order-123?status=queued",
+        json={"customer": {"email": "alex@example.com"}},
+    )
+    assert runtime_response.status_code == 201
+    assert runtime_response.json() == {
+        "summary": "order=order-123 status=queued email=alex@example.com",
+        "route": "POST /api/mapped-live/{orderId}",
+        "email": "alex@example.com",
+    }
+
+    executions_response = client.get(
+        f"/api/admin/executions?endpoint_id={endpoint['id']}&limit=5",
+        headers=headers,
+    )
+    assert executions_response.status_code == 200
+    execution = executions_response.json()[0]
+
+    execution_detail_response = client.get(
+        f"/api/admin/executions/{execution['id']}",
+        headers=headers,
+    )
+    assert execution_detail_response.status_code == 200
+    steps = execution_detail_response.json()["steps"]
+    assert steps[-2]["node_type"] == "transform"
+    assert steps[-2]["output_data"] == {
+        "receipt": "order=order-123 status=queued email=alex@example.com",
+        "route_line": "POST /api/mapped-live/{orderId}",
+        "customer_email": "alex@example.com",
+    }
+    assert steps[-1]["node_type"] == "set_response"
+    assert steps[-1]["output_data"] == {
+        "status_code": 201,
+        "body": {
+            "summary": "order=order-123 status=queued email=alex@example.com",
+            "route": "POST /api/mapped-live/{orderId}",
+            "email": "alex@example.com",
+        },
+    }
+
+
 def test_admin_can_unpublish_active_route_without_deleting_definition(empty_db):
     client = TestClient(app)
     headers = _login_headers(client)

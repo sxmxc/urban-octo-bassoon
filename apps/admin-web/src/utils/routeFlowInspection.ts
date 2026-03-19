@@ -267,6 +267,10 @@ function renderStringTemplate(template: string, context: FlowRuntimeContext, tra
   );
 }
 
+function hasTemplateTokens(value: string): boolean {
+  return value.includes("{{") && value.includes("}}");
+}
+
 function renderTemplate(value: JsonValue | undefined, context: FlowRuntimeContext, tracker: ResolutionTracker): JsonValue {
   if (value === undefined) {
     return null;
@@ -285,6 +289,10 @@ function renderTemplate(value: JsonValue | undefined, context: FlowRuntimeContex
       accumulator[key] = renderTemplate(child, context, tracker);
       return accumulator;
     }, {});
+  }
+
+  if (typeof value === "string" && hasTemplateTokens(value)) {
+    return renderStringTemplate(value, context, tracker);
   }
 
   return value;
@@ -310,7 +318,7 @@ function renderConnectorValue(value: JsonValue | undefined, context: FlowRuntime
     }, {});
   }
 
-  if (typeof value === "string" && value.includes("{{") && value.includes("}}")) {
+  if (typeof value === "string" && hasTemplateTokens(value)) {
     return renderStringTemplate(value, context, tracker);
   }
 

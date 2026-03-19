@@ -2169,7 +2169,7 @@ onBeforeUnmount(() => {
                         <v-textarea
                           class="mt-3"
                           auto-grow
-                          hint="Use JSON plus refs like {&quot;$ref&quot;:&quot;request.body&quot;} or {&quot;$ref&quot;:&quot;state.transform&quot;}."
+                          hint="Use JSON with whole-value refs like {&quot;$ref&quot;:&quot;request.body&quot;} and inline string templates like &quot;Hello {{request.path.userId}}&quot;."
                           label="Output template JSON"
                           persistent-hint
                           rows="11"
@@ -2455,7 +2455,7 @@ onBeforeUnmount(() => {
                         <v-textarea
                           class="mt-3"
                           auto-grow
-                          hint="Response bodies can be fixed JSON or ref-driven JSON such as {&quot;$ref&quot;:&quot;state.transform&quot;}."
+                          hint="Response bodies can mix fixed JSON, whole-value refs like {&quot;$ref&quot;:&quot;state.transform&quot;}, and inline string templates like &quot;order={{request.path.orderId}}&quot;."
                           label="Response body JSON"
                           persistent-hint
                           rows="11"
@@ -2488,7 +2488,7 @@ onBeforeUnmount(() => {
                         <v-textarea
                           class="mt-3"
                           auto-grow
-                          hint="Returned when Validate Request fails, or when any other flow path explicitly routes into Error Response."
+                          hint="Returned when Validate Request fails or a flow path routes here. Supports whole-value refs and inline string templates such as &quot;reason={{errors.0}}&quot;."
                           label="Error response body JSON"
                           persistent-hint
                           rows="11"

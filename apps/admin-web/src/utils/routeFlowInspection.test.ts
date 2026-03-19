@@ -156,6 +156,94 @@ describe("routeFlowInspection", () => {
     expect(responseInspection.boundaryMessage).toContain("Deploy returns this Set Response body");
   });
 
+  it("renders inline string interpolation while preserving whole-value refs across transform and Set Response", () => {
+    const definition: RouteFlowDefinition = {
+      schema_version: 1,
+      nodes: [
+        { id: "trigger", type: "api_trigger", name: "API Trigger", config: {} },
+        {
+          id: "transform",
+          type: "transform",
+          name: "Transform",
+          config: {
+            output: {
+              greeting: "svc={{request.path.service}} mode={{request.query.mode}} ok={{request.body.healthy}} missing={{request.query.missing}}",
+              service: { $ref: "request.path.service" },
+            },
+          },
+        },
+        {
+          id: "response",
+          type: "set_response",
+          name: "Set Response",
+          config: {
+            status_code: 200,
+            body: {
+              message: "Flow says {{state.transform.greeting}}",
+              service: { $ref: "state.transform.service" },
+            },
+          },
+        },
+      ],
+      edges: [
+        { source: "trigger", target: "transform" },
+        { source: "transform", target: "response" },
+      ],
+    };
+
+    const snapshot = buildRouteFlowInspectionSnapshot(definition, createRouteContext());
+
+    expect(snapshot.nodesById.transform.outputSample).toEqual({
+      greeting: "svc=sample-service mode=simple ok=true missing=",
+      service: "sample-service",
+    });
+    expect(snapshot.nodesById.transform.unresolvedRefs).toContain("request.query.missing");
+    expect(snapshot.nodesById.response.outputSample).toEqual({
+      body: {
+        message: "Flow says svc=sample-service mode=simple ok=true missing=",
+        service: "sample-service",
+      },
+      status_code: 200,
+    });
+  });
+
+  it("renders inline string interpolation and whole-value refs for Error Response output samples", () => {
+    const definition: RouteFlowDefinition = {
+      schema_version: 1,
+      nodes: [
+        { id: "trigger", type: "api_trigger", name: "API Trigger", config: {} },
+        {
+          id: "error",
+          type: "error_response",
+          name: "Error Response",
+          config: {
+            status_code: 422,
+            body: {
+              error: "bad request for {{request.path.service}}",
+              mode: { $ref: "request.query.mode" },
+              first_error: "{{errors.0}}",
+            },
+          },
+        },
+      ],
+      edges: [
+        { source: "trigger", target: "error" },
+      ],
+    };
+
+    const snapshot = buildRouteFlowInspectionSnapshot(definition, createRouteContext());
+
+    expect(snapshot.nodesById.error.outputSample).toEqual({
+      body: {
+        error: "bad request for sample-service",
+        mode: "simple",
+        first_error: "",
+      },
+      status_code: 422,
+    });
+    expect(snapshot.nodesById.error.unresolvedRefs).toContain("errors.0");
+  });
+
   it("uses explicit placeholder samples for connector nodes until live execution data exists", () => {
     const connections: Connection[] = [
       {

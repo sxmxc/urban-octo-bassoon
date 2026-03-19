@@ -1,5 +1,10 @@
 # DECISIONS
 
+## 2026-03-19: Flow mappings should share one ref-plus-template value language
+- **Authoring model**: Keep the Flow inspector JSON-first for now rather than introducing a separate mapping DSL; operators can map whole values with `{"$ref":"..."}` and compose inline strings with `{{...}}`.
+- **Runtime parity**: Use the same value-rendering semantics in live execution and Flow sample inspection so editor output stays trustworthy before publish.
+- **UX scope**: Expose the capability through inspector copy/hints now, while keeping caret-aware helper insertion and richer non-JSON mapping UI as separate follow-up work.
+
 ## 2026-03-19: Flow sample-data visibility takes priority over connection-management UI
 - **Workflow priority**: Pull node-level sample-data visibility ahead of the placeholder connection-management card, because the more urgent operator failure is understanding how request-contract inputs become deployed responses in Flow.
 - **Mental model**: Treat `API Trigger` as the request-contract entrypoint and `Set Response` as the live response exit, while keeping `response_schema` as the separate contract-preview source used by the `Test` journey.

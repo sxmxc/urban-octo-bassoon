@@ -519,6 +519,9 @@ def _render_template(value: Any, context: dict[str, Any]) -> Any:
     if isinstance(value, list):
         return [_render_template(child, context) for child in value]
 
+    if isinstance(value, str) and "{{" in value and "}}" in value:
+        return _render_string_template(value, context)
+
     return value
 
 

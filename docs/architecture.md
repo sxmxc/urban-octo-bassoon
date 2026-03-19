@@ -18,6 +18,7 @@ The current milestone is the **first branch-aware live-flow slice**:
 - the route `Test` workspace and dedicated route tester now separate admin contract preview from live/public request execution, with explicit draft/live state summaries
 - the deploy surface now supports both publish and disable-live actions against the active deployment
 - deployment-backed dispatch exists
+- Flow mapping values now support whole-value refs plus inline `{{...}}` interpolation in both live runtime execution and editor sample inspection
 - the Flow editor now supports first-class `If` / `Switch` logic nodes plus `HTTP Request` and read-only `Postgres Query` nodes backed by shared `Connection` records
 
 ## Core components
@@ -39,7 +40,7 @@ The current milestone is the **first branch-aware live-flow slice**:
   - Vue + Vite + Vuetify admin dashboard.
   - Provides route catalog management, a dedicated schema studio, preview tools, a personal profile flow, superuser-only user management, auth-protected admin workflows with role-aware UI gating, and new route-first tabs for `Overview`, `Contract`, `Flow`, `Test`, and `Deploy`.
   - The schema studio is intentionally pivoting from a bespoke pill-tree drag/drop surface toward a canvas-first architecture, with `Vue Flow` as the leading frontend foundation, while preserving the existing backend JSON Schema contracts.
-  - The `Flow` surface now uses a constrained Vue Flow canvas with an API-first entry node, branch-aware logic/connector palettes, visible branch ports, drag-to-canvas placement, explicit `error_response` routing, inspector editing, per-node sample data inspection, and a more canvas-native full-editor mode built around compact floating launchers, a top-center control bar, a MiniMap, and node-local toolbars while preserving the same backend flow-definition model.
+  - The `Flow` surface now uses a constrained Vue Flow canvas with an API-first entry node, branch-aware logic/connector palettes, visible branch ports, drag-to-canvas placement, explicit `error_response` routing, inspector editing, per-node sample data inspection, inline string/data composition inside mapping JSON, and a more canvas-native full-editor mode built around compact floating launchers, a top-center control bar, a MiniMap, and node-local toolbars while preserving the same backend flow-definition model.
   - The schema editor and Flow palette now route their bespoke drag interactions through a shared Pragmatic Drag and Drop wrapper, which replaces the older native `dataTransfer` plumbing with maintained drag previews plus richer copy/move drop hooks.
   - Local Docker development uses a Vite-based `dev` image target, while release builds package the compiled SPA behind Nginx in a separate `runtime` target.
 
@@ -61,5 +62,5 @@ The current milestone is the **first branch-aware live-flow slice**:
 ## Immediate next step
 
 The next major implementation task should deepen the operator surface:
-- add richer data-mapping and connection-management tooling to the Flow workspace
+- add connection-management tooling and cursor-aware mapping helpers to the Flow workspace
 - keep the preview/runtime split intact while those UX passes land, so contract previews stay schema-driven and live/public execution stays deployment-backed

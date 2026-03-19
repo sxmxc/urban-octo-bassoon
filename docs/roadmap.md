@@ -61,6 +61,7 @@ Already shipped:
   - `Test`
   - `Deploy`
 - a clearer `Test` journey and dedicated route tester that now separate admin contract previews from live/public requests and label live versus draft runtime state explicitly
+- shared Flow value rendering for runtime and editor inspection, so transform/response mappings can combine whole-value refs with inline `{{...}}` string interpolation
 - Flow-tab inspector support for binding HTTP and Postgres nodes to saved shared connections
 - Flow-tab branch-aware logic editing for first-class `If` / `Switch` nodes
 - maintained drag-and-drop for the schema editor and Flow palette, replacing bespoke native `dataTransfer` wiring with shared drag-preview/drop-target infrastructure
@@ -78,8 +79,8 @@ Still transitional:
 ### 1. Improve operator surfaces
 
 After the above:
-- richer data mapping in the Flow designer
 - connection management UI
+- cursor-aware helper insertion in Flow JSON editors
 - execution drill-down
 - replay/debug tooling
 - deployment promotion polish
