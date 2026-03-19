@@ -253,7 +253,9 @@ class RouteDeploymentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class ConnectionCreate(BaseModel):
+class ConnectionBase(BaseModel):
+    project: str = "default"
+    environment: str = "production"
     name: str
     connector_type: ConnectionType = ConnectionType.http
     description: Optional[str] = None
@@ -261,7 +263,15 @@ class ConnectionCreate(BaseModel):
     is_active: bool = True
 
 
-class ConnectionRead(ConnectionCreate):
+class ConnectionCreate(ConnectionBase):
+    pass
+
+
+class ConnectionUpdate(ConnectionBase):
+    pass
+
+
+class ConnectionRead(ConnectionBase):
     id: int
     created_at: datetime
     updated_at: datetime

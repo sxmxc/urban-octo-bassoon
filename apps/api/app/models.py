@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Dict, List, Optional
 
 from pydantic import ConfigDict
-from sqlalchemy import Boolean, Column, JSON as SAJSON, String
+from sqlalchemy import Boolean, Column, JSON as SAJSON, String, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 from app.rbac import AdminRole
@@ -117,8 +117,18 @@ class RouteDeployment(SQLModel, table=True):
 
 
 class Connection(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("project", "environment", "name", name="uq_connection_scope_name"),)
+
     id: Optional[int] = Field(default=None, primary_key=True)
-    name: str = Field(sa_column=Column(String(160), nullable=False, unique=True, index=True))
+    project: str = Field(
+        default="default",
+        sa_column=Column(String(120), nullable=False, server_default="default", index=True),
+    )
+    environment: str = Field(
+        default="production",
+        sa_column=Column(String(64), nullable=False, server_default="production", index=True),
+    )
+    name: str = Field(sa_column=Column(String(160), nullable=False, index=True))
     connector_type: ConnectionType = Field(
         default=ConnectionType.http,
         sa_column=Column(String(32), nullable=False, server_default=ConnectionType.http.value),

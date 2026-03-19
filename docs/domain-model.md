@@ -65,12 +65,18 @@ Represents a reusable connector configuration for future live steps such as outb
 
 Fields:
 - `id`: integer primary key
-- `name`: unique admin-facing connection label
+- `project`: lightweight project scope label, currently defaulting to `default`
+- `environment`: lightweight environment scope label, currently defaulting to `production`
+- `name`: admin-facing connection label, unique within one `project` + `environment` scope
 - `connector_type`: `http` or `postgres`
 - `description`: optional operator note
 - `config`: connector configuration payload; `http` connections currently require `base_url` and may also carry shared headers/timeouts, while `postgres` connections currently require either a DSN or host/database/user credentials
 - `is_active`: whether the connection can be referenced
 - `created_at`, `updated_at`: audit timestamps
+
+Operational notes:
+- This scope metadata is intentionally lighter than a full Project model; it exists to organize shared connections in the admin UI and to make route/environment intent visible while the broader multi-project roadmap remains separate.
+- Flow nodes still bind saved connections by explicit id today, so scope helps operators manage and inspect records without changing runtime resolution behavior automatically.
 
 ## ExecutionRun
 Represents one live runtime attempt for a deployed route.

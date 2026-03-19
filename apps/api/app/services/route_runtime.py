@@ -9,6 +9,7 @@ from urllib.parse import unquote, urljoin
 import httpx
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import delete, desc
 from sqlmodel import Session, select
 
@@ -23,6 +24,7 @@ from app.models import (
 )
 from app.schemas import (
     ConnectionCreate,
+    ConnectionUpdate,
     ExecutionRunDetail,
     ExecutionRunRead,
     ExecutionStepRead,
@@ -66,6 +68,10 @@ IF_OPERATORS = {
     "not_exists",
     "truthy",
 }
+CONNECTION_PROJECT_MAX_LENGTH = 120
+CONNECTION_ENVIRONMENT_MAX_LENGTH = 64
+CONNECTION_NAME_MAX_LENGTH = 160
+CONNECTION_DESCRIPTION_MAX_LENGTH = 500
 
 
 @dataclass(slots=True)
@@ -655,15 +661,117 @@ def _validate_postgres_connection_config(config: dict[str, Any]) -> None:
     _postgres_connect_kwargs(config)
 
 
-def _validate_connection_payload(payload: ConnectionCreate) -> None:
+def _normalize_connection_scope_value(value: str | None, *, default: str) -> str:
+    normalized = str(value or "").strip()
+    return normalized or default
+
+
+def _validate_connection_text_length(*, value: str, label: str, max_length: int) -> None:
+    if len(value) > max_length:
+        raise ValueError(f"{label} must be {max_length} characters or fewer.")
+
+
+def _normalize_connection_payload(payload: ConnectionCreate | ConnectionUpdate) -> ConnectionCreate:
+    project = _normalize_connection_scope_value(payload.project, default="default")
+    environment = _normalize_connection_scope_value(payload.environment, default="production")
+    name = str(payload.name or "").strip()
+    if not name:
+        raise ValueError("Connection name is required.")
+    description = str(payload.description or "").strip() or None
     config = payload.config if isinstance(payload.config, dict) else {}
-    if payload.connector_type == ConnectionType.http:
+    _validate_connection_text_length(
+        value=project,
+        label="Connection project",
+        max_length=CONNECTION_PROJECT_MAX_LENGTH,
+    )
+    _validate_connection_text_length(
+        value=environment,
+        label="Connection environment",
+        max_length=CONNECTION_ENVIRONMENT_MAX_LENGTH,
+    )
+    _validate_connection_text_length(
+        value=name,
+        label="Connection name",
+        max_length=CONNECTION_NAME_MAX_LENGTH,
+    )
+    if description is not None:
+        _validate_connection_text_length(
+            value=description,
+            label="Connection description",
+            max_length=CONNECTION_DESCRIPTION_MAX_LENGTH,
+        )
+
+    return ConnectionCreate(
+        project=project,
+        environment=environment,
+        name=name,
+        connector_type=payload.connector_type,
+        description=description,
+        config=config,
+        is_active=bool(payload.is_active),
+    )
+
+
+def _validate_connection_payload(payload: ConnectionCreate | ConnectionUpdate) -> ConnectionCreate:
+    normalized = _normalize_connection_payload(payload)
+    config = normalized.config if isinstance(normalized.config, dict) else {}
+    if normalized.connector_type == ConnectionType.http:
         _validate_http_connection_config(config)
-        return
-    if payload.connector_type == ConnectionType.postgres:
+        return normalized
+    if normalized.connector_type == ConnectionType.postgres:
         _validate_postgres_connection_config(config)
-        return
-    raise ValueError(f"Unsupported connection type '{payload.connector_type}'.")
+        return normalized
+    raise ValueError(f"Unsupported connection type '{normalized.connector_type}'.")
+
+
+def _find_connection_name_conflict(
+    session: Session,
+    *,
+    project: str,
+    environment: str,
+    name: str,
+    exclude_connection_id: int | None = None,
+) -> Connection | None:
+    statement = select(Connection).where(
+        Connection.project == project,
+        Connection.environment == environment,
+        Connection.name == name,
+    )
+    if exclude_connection_id is not None:
+        statement = statement.where(Connection.id != exclude_connection_id)
+    return session.execute(statement).scalars().first()
+
+
+def _connection_scope_label(project: str, environment: str) -> str:
+    return f"{project}/{environment}"
+
+
+def _build_connection_conflict_error(*, project: str, environment: str, name: str) -> ValueError:
+    return ValueError(
+        f"Connection '{name}' is already in use for scope '{_connection_scope_label(project, environment)}'."
+    )
+
+
+def _commit_connection_with_conflict_guard(
+    session: Session,
+    *,
+    connection: Connection,
+    scope_project: str,
+    scope_environment: str,
+    scope_name: str,
+) -> Connection:
+    session.add(connection)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise _build_connection_conflict_error(
+            project=scope_project,
+            environment=scope_environment,
+            name=scope_name,
+        )
+    session.refresh(connection)
+    return connection
 
 
 def _validate_http_request_node_config(config: dict[str, Any]) -> None:
@@ -1971,22 +2079,76 @@ def unpublish_route_implementation(
     return active_deployments[0]
 
 
-def list_connections(session: Session) -> list[Connection]:
-    statement = select(Connection).order_by(Connection.name)
+def list_connections(
+    session: Session,
+    *,
+    project: str | None = None,
+    environment: str | None = None,
+) -> list[Connection]:
+    statement = select(Connection)
+    normalized_project = _normalize_connection_scope_value(project, default="")
+    normalized_environment = _normalize_connection_scope_value(environment, default="")
+    if normalized_project:
+        statement = statement.where(Connection.project == normalized_project)
+    if normalized_environment:
+        statement = statement.where(Connection.environment == normalized_environment)
+    statement = statement.order_by(Connection.project, Connection.environment, Connection.name)
     return list(session.execute(statement).scalars())
 
 
 def create_connection(session: Session, payload: ConnectionCreate) -> Connection:
-    existing = session.execute(select(Connection).where(Connection.name == payload.name)).scalars().first()
+    normalized = _normalize_connection_payload(payload)
+    existing = _find_connection_name_conflict(
+        session,
+        project=normalized.project,
+        environment=normalized.environment,
+        name=normalized.name,
+    )
     if existing is not None:
-        raise ValueError(f"Connection '{payload.name}' is already in use.")
+        raise _build_connection_conflict_error(
+            project=normalized.project,
+            environment=normalized.environment,
+            name=normalized.name,
+        )
 
-    _validate_connection_payload(payload)
-    connection = Connection(**payload.model_dump())
-    session.add(connection)
-    session.commit()
-    session.refresh(connection)
-    return connection
+    validated = _validate_connection_payload(normalized)
+    connection = Connection(**validated.model_dump())
+    return _commit_connection_with_conflict_guard(
+        session,
+        connection=connection,
+        scope_project=validated.project,
+        scope_environment=validated.environment,
+        scope_name=validated.name,
+    )
+
+
+def update_connection(session: Session, connection: Connection, payload: ConnectionUpdate) -> Connection:
+    normalized = _normalize_connection_payload(payload)
+    existing = _find_connection_name_conflict(
+        session,
+        project=normalized.project,
+        environment=normalized.environment,
+        name=normalized.name,
+        exclude_connection_id=connection.id,
+    )
+    if existing is not None:
+        raise _build_connection_conflict_error(
+            project=normalized.project,
+            environment=normalized.environment,
+            name=normalized.name,
+        )
+
+    validated = _validate_connection_payload(normalized)
+    for field, value in validated.model_dump().items():
+        setattr(connection, field, value)
+    connection.updated_at = utc_now()
+    return _commit_connection_with_conflict_guard(
+        session,
+        connection=connection,
+        scope_project=validated.project,
+        scope_environment=validated.environment,
+        scope_name=validated.name,
+    )
 
 
 def list_execution_runs(session: Session, *, route_id: int | None = None, limit: int = 50) -> list[ExecutionRun]:

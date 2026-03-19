@@ -188,6 +188,9 @@ def test_create_db_and_tables_uses_alembic_schema():
     assert "failed_login_attempts" in admin_columns
     assert "last_failed_login_at" in admin_columns
     assert "locked_until" in admin_columns
+    connection_columns = {column["name"] for column in inspector.get_columns("connection")}
+    assert "project" in connection_columns
+    assert "environment" in connection_columns
 
 
 def test_route_runtime_scaffolding_endpoints_publish_and_record_executions(empty_db):
@@ -575,6 +578,8 @@ def test_runtime_connections_can_be_created_and_listed(empty_db):
     create_response = client.post(
         "/api/admin/connections",
         json={
+            "project": "default",
+            "environment": "production",
             "name": "Primary upstream",
             "connector_type": "http",
             "description": "Primary live API target",
@@ -589,6 +594,8 @@ def test_runtime_connections_can_be_created_and_listed(empty_db):
     duplicate_response = client.post(
         "/api/admin/connections",
         json={
+            "project": "default",
+            "environment": "production",
             "name": "Primary upstream",
             "connector_type": "http",
             "description": None,
@@ -604,6 +611,8 @@ def test_runtime_connections_can_be_created_and_listed(empty_db):
     assert list_response.json() == [
         {
             "id": 1,
+            "project": "default",
+            "environment": "production",
             "name": "Primary upstream",
             "connector_type": "http",
             "description": "Primary live API target",
@@ -613,6 +622,148 @@ def test_runtime_connections_can_be_created_and_listed(empty_db):
             "updated_at": list_response.json()[0]["updated_at"],
         }
     ]
+
+
+def test_runtime_connections_are_scoped_and_can_be_updated(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    primary_response = client.post(
+        "/api/admin/connections",
+        json={
+            "project": "default",
+            "environment": "production",
+            "name": "Orders upstream",
+            "connector_type": "http",
+            "description": "Production API target",
+            "config": {"base_url": "https://api.example.com"},
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert primary_response.status_code == 201
+
+    scoped_duplicate_response = client.post(
+        "/api/admin/connections",
+        json={
+            "project": "default",
+            "environment": "staging",
+            "name": "Orders upstream",
+            "connector_type": "http",
+            "description": "Staging API target",
+            "config": {"base_url": "https://staging-api.example.com"},
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert scoped_duplicate_response.status_code == 201
+
+    update_response = client.put(
+        "/api/admin/connections/1",
+        json={
+            "project": "project-alpha",
+            "environment": "staging",
+            "name": "Orders upstream",
+            "connector_type": "http",
+            "description": "Rotated staging target",
+            "config": {"base_url": "https://alpha-staging.example.com", "timeout_ms": 2500},
+            "is_active": False,
+        },
+        headers=headers,
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["project"] == "project-alpha"
+    assert update_response.json()["environment"] == "staging"
+    assert update_response.json()["is_active"] is False
+
+    filtered_response = client.get(
+        "/api/admin/connections?project=project-alpha&environment=staging",
+        headers=headers,
+    )
+    assert filtered_response.status_code == 200
+    assert filtered_response.json() == [
+        {
+            "id": 1,
+            "project": "project-alpha",
+            "environment": "staging",
+            "name": "Orders upstream",
+            "connector_type": "http",
+            "description": "Rotated staging target",
+            "config": {"base_url": "https://alpha-staging.example.com", "timeout_ms": 2500},
+            "is_active": False,
+            "created_at": filtered_response.json()[0]["created_at"],
+            "updated_at": filtered_response.json()[0]["updated_at"],
+        }
+    ]
+
+    conflict_response = client.put(
+        "/api/admin/connections/2",
+        json={
+            "project": "project-alpha",
+            "environment": "staging",
+            "name": "Orders upstream",
+            "connector_type": "http",
+            "description": "Should conflict with the rotated connection",
+            "config": {"base_url": "https://alpha-staging-2.example.com"},
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert conflict_response.status_code == 409
+
+
+def test_runtime_connections_default_and_trim_scope_values(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    create_response = client.post(
+        "/api/admin/connections",
+        json={
+            "project": "   ",
+            "environment": "",
+            "name": "  Scoped default connection  ",
+            "connector_type": "http",
+            "description": "  Trimmed description  ",
+            "config": {"base_url": "https://api.example.com"},
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    created_connection = create_response.json()
+    assert created_connection["project"] == "default"
+    assert created_connection["environment"] == "production"
+    assert created_connection["name"] == "Scoped default connection"
+    assert created_connection["description"] == "Trimmed description"
+
+    filtered_response = client.get(
+        "/api/admin/connections?project=default&environment=production",
+        headers=headers,
+    )
+    assert filtered_response.status_code == 200
+    assert len(filtered_response.json()) == 1
+    assert filtered_response.json()[0]["id"] == created_connection["id"]
+
+
+def test_runtime_connections_reject_too_long_scope_name(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    response = client.post(
+        "/api/admin/connections",
+        json={
+            "project": "p" * 121,
+            "environment": "production",
+            "name": "Valid name",
+            "connector_type": "http",
+            "description": None,
+            "config": {"base_url": "https://api.example.com"},
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 400
+    assert "Connection project must be 120 characters or fewer." in response.json()["detail"]
 
 
 def test_route_runtime_rejects_invalid_connector_node_config(empty_db):

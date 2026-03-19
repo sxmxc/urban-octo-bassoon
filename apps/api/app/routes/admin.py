@@ -15,7 +15,7 @@ from app.crud import (
     update_endpoint,
 )
 from app.db import get_session
-from app.models import EndpointDefinition
+from app.models import Connection, EndpointDefinition
 from app.schemas import (
     AdminAccountUpdate,
     AdminLoginRequest,
@@ -27,6 +27,7 @@ from app.schemas import (
     ChangePasswordRequest,
     ConnectionCreate,
     ConnectionRead,
+    ConnectionUpdate,
     EndpointCreate,
     EndpointBundle,
     EndpointImportMode,
@@ -86,6 +87,7 @@ from app.services.route_runtime import (
     list_route_deployments,
     publish_route_implementation,
     unpublish_route_implementation,
+    update_connection,
     upsert_route_implementation,
 )
 from app.services.schema_contract import (
@@ -943,10 +945,15 @@ def unpublish_current_route_implementation(
 
 @router.get("/connections", response_model=list[ConnectionRead])
 def list_runtime_connections(
+    project: str | None = None,
+    environment: str | None = None,
     session: Session = Depends(get_session),
     _: AdminContext = Depends(require_route_read_access),
 ) -> list[ConnectionRead]:
-    return [ConnectionRead.model_validate(connection) for connection in list_connections(session)]
+    return [
+        ConnectionRead.model_validate(connection)
+        for connection in list_connections(session, project=project, environment=environment)
+    ]
 
 
 @router.post("/connections", response_model=ConnectionRead, status_code=status.HTTP_201_CREATED)
@@ -960,6 +967,23 @@ def create_runtime_connection(
     except ValueError as error:
         _raise_user_input_error(error)
     return ConnectionRead.model_validate(connection)
+
+
+@router.put("/connections/{connection_id}", response_model=ConnectionRead)
+def update_runtime_connection(
+    connection_id: int,
+    payload: ConnectionUpdate,
+    session: Session = Depends(get_session),
+    _: AdminContext = Depends(require_route_write_access),
+) -> ConnectionRead:
+    connection = session.get(Connection, connection_id)
+    if connection is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
+    try:
+        updated_connection = update_connection(session, connection, payload)
+    except ValueError as error:
+        _raise_user_input_error(error)
+    return ConnectionRead.model_validate(updated_connection)
 
 
 @router.get("/executions", response_model=list[ExecutionRunRead])
