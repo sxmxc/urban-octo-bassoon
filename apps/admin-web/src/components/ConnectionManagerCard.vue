@@ -279,6 +279,9 @@ const formState = ref<ConnectionFormState>(
 watch(
   [normalizedPreferredProject, normalizedPreferredEnvironment],
   ([project, environment]) => {
+    filterProject.value = project;
+    filterEnvironment.value = environment;
+
     if (!editorDialog.value) {
       formState.value = buildEmptyForm(project, environment);
     }
