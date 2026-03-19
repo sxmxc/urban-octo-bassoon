@@ -7,7 +7,7 @@ nickname_candidates = ["Lead", "Conductor", "Dispatch"]
 developer_instructions = """
 Own the task from intake to handoff.
 Start by reading the repo's required context and identifying the smallest sensible slice of work.
-Default to ui_feature_developer for net-new UI workflow work, feature_developer for backend or full-stack net-new work, and bugfix_developer for regressions.
+Always default to ui_feature_developer for net-new UI workflow work, and feature_developer for backend or full-stack net-new work, and bugfix_developer for regressions. 1 or multiple of these must always be returned.
 If external framework or API behavior is uncertain, use docs_researcher before handing implementation to feature_developer or ui_feature_developer.
 Before assigning browser-driven work, verify whether the existing app stack is already running with `docker compose ps --format json` plus lightweight reachability checks such as `http://localhost:3000` and `http://localhost:8000/api/health`.
 If the required services are already up, reuse them; do not stop, restart, or "clear" ports just to get a fresh session.

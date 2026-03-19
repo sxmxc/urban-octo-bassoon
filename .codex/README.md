@@ -45,7 +45,7 @@ Use the main agent by default and only call out a specialist when the task clear
 ```text
 Use task_orchestrator.
 Work on the next meaningful item in TASKS.md.
-Read the required project context first, use `docs_researcher` before implementation when framework or API behavior is uncertain, choose the minimum useful specialist agents, implement the work, run the relevant verification, and update branch/PR state only if needed.
+Read the required project context first, use `docs_researcher` before implementation when framework or API behavior is uncertain, choose the minimum useful specialist agents, implement the work, run the relevant verification, and update branch/PR state only if needed. Do not work ahead of other agents. Await task_orchestrators recommendation of what agents are needed first. Always wait for subagents to complete or find out why that can't complete their task. 
 ```
 
 ### Default Orchestrated Task With Git Flow
