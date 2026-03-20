@@ -3,8 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vu
 import { useRoute, useRouter } from "vue-router";
 import {
   AdminApiError,
-  createConnection,
   getExecution,
+  getExecutionTelemetryOverview,
   getCurrentRouteImplementation,
   listConnections,
   createEndpoint,
@@ -17,17 +17,15 @@ import {
   publishRouteImplementation,
   saveCurrentRouteImplementation,
   unpublishRouteDeployment,
-  updateConnection,
   updateEndpoint,
 } from "../api/admin";
-import ConnectionManagerCard from "../components/ConnectionManagerCard.vue";
 import EndpointCatalog from "../components/EndpointCatalog.vue";
 import EndpointSettingsForm from "../components/EndpointSettingsForm.vue";
+import RouteContractEditor from "../components/RouteContractEditor.vue";
 import RouteFlowEditor from "../components/RouteFlowEditor.vue";
 import { useAuth } from "../composables/useAuth";
 import type {
   Connection,
-  ConnectionPayload,
   Endpoint,
   EndpointBundle,
   EndpointDraft,
@@ -37,6 +35,7 @@ import type {
   EndpointImportSummary,
   ExecutionRun,
   ExecutionRunDetail,
+  ExecutionTelemetryOverview,
   RouteFlowDefinition,
   RouteDeployment,
   RouteImplementation,
@@ -52,7 +51,6 @@ import {
   createDuplicateDraft,
   createEmptyDraft,
   describeAdminError,
-  describeSchema,
   draftFromEndpoint,
 } from "../utils/endpointDrafts";
 
@@ -61,6 +59,8 @@ const CATALOG_STALE_AFTER_MS = 15_000;
 const DEFAULT_CONNECTION_PROJECT = "default";
 const DEFAULT_CONNECTION_ENVIRONMENT = "production";
 type RouteWorkspaceTab = "overview" | "contract" | "flow" | "test" | "deploy";
+type ContractSchemaTab = "request" | "response";
+type ContractRequestSection = "body" | "path" | "query";
 const ROUTE_WORKSPACE_TABS: RouteWorkspaceTab[] = ["overview", "contract", "flow", "test", "deploy"];
 
 const props = defineProps<{
@@ -106,15 +106,20 @@ const selectedExecutionId = ref<number | null>(null);
 const selectedExecutionDetail = ref<ExecutionRunDetail | null>(null);
 const isLoadingExecutionDetail = ref(false);
 const executionDetailError = ref<string | null>(null);
+const executionTelemetry = ref<ExecutionTelemetryOverview | null>(null);
+const isLoadingExecutionTelemetry = ref(false);
+const executionTelemetryError = ref<string | null>(null);
 const connections = ref<Connection[]>([]);
 const isLoadingConnections = ref(false);
-const isSavingConnection = ref(false);
-const connectionManagerError = ref<string | null>(null);
+const activeContractRequestSection = ref<ContractRequestSection>("body");
 
 let catalogRefreshTimer: number | null = null;
 let pendingCatalogRequest: Promise<void> | null = null;
+let pendingExecutionTelemetryRequest: Promise<void> | null = null;
+let removeFlowNavigationGuard: (() => void) | null = null;
 // Ignore out-of-order execution-detail responses when operators switch runs quickly.
 let executionDetailRequestToken = 0;
+let nextSelectedEndpointDraftOverride: EndpointDraft | null = null;
 
 const importModeOptions: Array<{ title: string; value: EndpointImportMode }> = [
   {
@@ -233,8 +238,38 @@ const canApplyImport = computed(() =>
 );
 const canWriteRoutes = computed(() => auth.canWriteRoutes.value && !auth.mustChangePassword.value);
 const canPreviewRoutes = computed(() => auth.canPreviewRoutes.value && !auth.mustChangePassword.value);
-const requestSummary = computed(() => describeSchema(draft.value.request_schema, "request"));
-const responseSummary = computed(() => describeSchema(draft.value.response_schema, "response"));
+const activeContractSchemaTab = computed<ContractSchemaTab>(() => {
+  const rawTab = Array.isArray(route.query.contractTab) ? route.query.contractTab[0] : route.query.contractTab;
+  if (rawTab === "request") {
+    return "request";
+  }
+  return "response";
+});
+const contractEditorPath = computed(() => selectedEndpoint.value?.path ?? draft.value.path);
+
+function stripContractFields(source: EndpointDraft): Omit<EndpointDraft, "request_schema" | "response_schema" | "seed_key"> {
+  const { request_schema: _requestSchema, response_schema: _responseSchema, seed_key: _seedKey, ...rest } = source;
+  return rest;
+}
+
+const isContractDirty = computed(() => {
+  if (props.mode !== "edit" || !selectedEndpoint.value) {
+    return false;
+  }
+
+  return (
+    JSON.stringify(draft.value.request_schema) !== JSON.stringify(selectedEndpoint.value.request_schema ?? {}) ||
+    JSON.stringify(draft.value.response_schema) !== JSON.stringify(selectedEndpoint.value.response_schema ?? {}) ||
+    draft.value.seed_key !== (selectedEndpoint.value.seed_key ?? "")
+  );
+});
+const hasNonContractDraftChanges = computed(() => {
+  if (props.mode !== "edit" || !selectedEndpoint.value) {
+    return false;
+  }
+
+  return JSON.stringify(stripContractFields(draft.value)) !== JSON.stringify(stripContractFields(draftFromEndpoint(selectedEndpoint.value)));
+});
 const routeTabs = computed(() => [
   {
     title: "Overview",
@@ -282,10 +317,20 @@ const isFlowDirty = computed(
     Boolean(selectedEndpoint.value) &&
     serializedFlowDraftDefinition.value !== formattedCurrentFlowDefinition.value,
 );
+const shouldWarnOnUnsavedFlowChanges = computed(
+  () => props.mode === "edit" && Boolean(selectedEndpoint.value) && isFlowDirty.value,
+);
 const activeDeployment = computed(() => deployments.value.find((deployment) => deployment.is_active) ?? null);
 const routeConnectionProject = computed(() => DEFAULT_CONNECTION_PROJECT);
 const routeConnectionEnvironment = computed(
   () => activeDeployment.value?.environment?.trim() || DEFAULT_CONNECTION_ENVIRONMENT,
+);
+const routeConnectionScopeLabel = computed(() => `${routeConnectionProject.value} / ${routeConnectionEnvironment.value}`);
+const scopedConnectionCount = computed(() =>
+  connections.value.filter(
+    (connection) =>
+      connection.project === routeConnectionProject.value && connection.environment === routeConnectionEnvironment.value,
+  ).length,
 );
 const hasDeploymentHistory = computed(() => deployments.value.length > 0);
 const routeTestState = computed(() =>
@@ -309,6 +354,111 @@ const deploymentSummary = computed(() => {
   }
   return "Publish this route when the flow draft is ready for live traffic.";
 });
+const browseMethodMix = computed(() => {
+  const methodCounts = new Map<string, number>();
+
+  for (const endpoint of endpoints.value) {
+    const method = endpoint.method.trim().toUpperCase() || "UNKNOWN";
+    methodCounts.set(method, (methodCounts.get(method) ?? 0) + 1);
+  }
+
+  return Array.from(methodCounts.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+});
+const browseCategoryMix = computed(() => {
+  const categoryCounts = new Map<string, number>();
+  let uncategorizedCount = 0;
+
+  for (const endpoint of endpoints.value) {
+    const rawCategory = endpoint.category?.trim() ?? "";
+    if (!rawCategory) {
+      uncategorizedCount += 1;
+      continue;
+    }
+    categoryCounts.set(rawCategory, (categoryCounts.get(rawCategory) ?? 0) + 1);
+  }
+
+  const categories = Array.from(categoryCounts.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+
+  if (uncategorizedCount > 0) {
+    categories.push({
+      label: "Uncategorized",
+      count: uncategorizedCount,
+    });
+  }
+
+  return categories;
+});
+const browseRouteMetrics = computed(() => {
+  const total = endpoints.value.length;
+  let publicCount = 0;
+  let liveRuntimeCount = 0;
+  let legacyMockCount = 0;
+  let disabledCount = 0;
+
+  for (const endpoint of endpoints.value) {
+    if (endpoint.publication_status.is_public) {
+      publicCount += 1;
+    }
+    if (endpoint.publication_status.is_live) {
+      liveRuntimeCount += 1;
+    }
+    if (endpoint.publication_status.uses_legacy_mock) {
+      legacyMockCount += 1;
+    }
+    if (!endpoint.enabled || endpoint.publication_status.code === "disabled") {
+      disabledCount += 1;
+    }
+  }
+
+  return {
+    total,
+    publicCount,
+    liveRuntimeCount,
+    legacyMockCount,
+    privateCount: Math.max(total - publicCount, 0),
+    disabledCount,
+  };
+});
+const executionTelemetrySnapshot = computed<ExecutionTelemetryOverview>(() => {
+  return (
+    executionTelemetry.value ?? {
+      sample_limit: 200,
+      sampled_runs: 0,
+      sampled_steps: 0,
+      route_count: 0,
+      success_runs: 0,
+      error_runs: 0,
+      success_rate: null,
+      average_response_time_ms: null,
+      p95_response_time_ms: null,
+      average_flow_time_ms: null,
+      p95_flow_time_ms: null,
+      average_steps_per_run: null,
+      latest_completed_at: null,
+      precise_step_run_count: 0,
+      slow_routes: [],
+      slow_flow_steps: [],
+    }
+  );
+});
+const hasExecutionTelemetry = computed(() => executionTelemetrySnapshot.value.sampled_runs > 0);
+const endpointIndex = computed(() => new Map(endpoints.value.map((endpoint) => [endpoint.id, endpoint])));
+const telemetrySlowRoutes = computed(() =>
+  executionTelemetrySnapshot.value.slow_routes.map((summary) => ({
+    summary,
+    endpoint: endpointIndex.value.get(summary.route_id) ?? null,
+  })),
+);
+const telemetrySlowFlowSteps = computed(() =>
+  executionTelemetrySnapshot.value.slow_flow_steps.map((summary) => ({
+    summary,
+    endpoint: endpointIndex.value.get(summary.route_id) ?? null,
+  })),
+);
 
 function mergeEndpointCatalog(nextEndpoints: Endpoint[]): Endpoint[] {
   const currentEndpointsById = new Map(endpoints.value.map((endpoint) => [endpoint.id, endpoint]));
@@ -356,6 +506,9 @@ async function fetchEndpoints(options: { background?: boolean } = {}): Promise<v
       endpoints.value = mergeEndpointCatalog(nextEndpoints);
       catalogError.value = null;
       lastCatalogSyncAt.value = Date.now();
+      if (props.mode === "browse") {
+        void fetchExecutionTelemetry({ background: options.background });
+      }
     } catch (error) {
       if (error instanceof AdminApiError && error.status === 401) {
         void auth.logout("Your admin session expired. Sign in again to keep editing.");
@@ -374,6 +527,49 @@ async function fetchEndpoints(options: { background?: boolean } = {}): Promise<v
   })();
 
   return pendingCatalogRequest;
+}
+
+async function fetchExecutionTelemetry(options: { background?: boolean } = {}): Promise<void> {
+  if (!auth.session.value || props.mode !== "browse") {
+    executionTelemetry.value = null;
+    executionTelemetryError.value = null;
+    return;
+  }
+
+  if (pendingExecutionTelemetryRequest) {
+    return pendingExecutionTelemetryRequest;
+  }
+
+  isLoadingExecutionTelemetry.value = true;
+  if (!options.background || executionTelemetry.value === null) {
+    executionTelemetryError.value = null;
+  }
+
+  pendingExecutionTelemetryRequest = (async () => {
+    try {
+      executionTelemetry.value = await getExecutionTelemetryOverview(auth.session.value!, {
+        limit: 200,
+        top: 5,
+      });
+      executionTelemetryError.value = null;
+    } catch (error) {
+      if (error instanceof AdminApiError && error.status === 401) {
+        void auth.logout("Your admin session expired. Sign in again to keep editing.");
+        void router.push({ name: "login" });
+        return;
+      }
+
+      executionTelemetryError.value =
+        executionTelemetry.value !== null
+          ? `Showing the last sampled telemetry. ${describeAdminError(error, "Unable to refresh runtime telemetry.")}`
+          : describeAdminError(error, "Unable to load runtime telemetry.");
+    } finally {
+      isLoadingExecutionTelemetry.value = false;
+      pendingExecutionTelemetryRequest = null;
+    }
+  })();
+
+  return pendingExecutionTelemetryRequest;
 }
 
 function refreshCatalogInBackground(force = false): void {
@@ -399,10 +595,25 @@ watch(
       endpoints.value = [];
       catalogError.value = null;
       lastCatalogSyncAt.value = null;
+      executionTelemetry.value = null;
+      executionTelemetryError.value = null;
       return;
     }
 
     void fetchEndpoints();
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.mode,
+  (mode) => {
+    if (mode === "browse" && auth.session.value) {
+      void fetchExecutionTelemetry();
+      return;
+    }
+
+    executionTelemetryError.value = null;
   },
   { immediate: true },
 );
@@ -437,10 +648,16 @@ watch(
 
     if (currentEndpointId !== previousEndpointId) {
       pageSuccess.value = savedQueryFlag.value ? "Saved endpoint settings." : null;
+      activeContractRequestSection.value = "body";
     }
 
     if (selectedEndpoint.value) {
-      draft.value = draftFromEndpoint(selectedEndpoint.value);
+      if (nextSelectedEndpointDraftOverride) {
+        draft.value = nextSelectedEndpointDraftOverride;
+        nextSelectedEndpointDraftOverride = null;
+      } else {
+        draft.value = draftFromEndpoint(selectedEndpoint.value);
+      }
     }
   },
   { immediate: true },
@@ -541,6 +758,56 @@ function handleVisibilityChange(): void {
   }
 }
 
+function parseRouteEndpointId(rawId: unknown): number | null {
+  if (typeof rawId === "string" && rawId.trim().length > 0) {
+    const parsed = Number(rawId);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (Array.isArray(rawId) && rawId.length > 0) {
+    return parseRouteEndpointId(rawId[0]);
+  }
+  return null;
+}
+
+function shouldConfirmFlowNavigation(nextEndpointId: number | null): boolean {
+  if (!shouldWarnOnUnsavedFlowChanges.value) {
+    return false;
+  }
+  if (nextEndpointId === endpointId.value) {
+    return false;
+  }
+  return true;
+}
+
+function confirmFlowNavigationLoss(): boolean {
+  return window.confirm("You have unsaved Flow changes. Leave this route and discard the current flow draft?");
+}
+
+function handleBeforeUnload(event: BeforeUnloadEvent): void {
+  if (!shouldWarnOnUnsavedFlowChanges.value) {
+    return;
+  }
+  event.preventDefault();
+  event.returnValue = "";
+}
+
+watch(
+  shouldWarnOnUnsavedFlowChanges,
+  (value) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (value) {
+      window.addEventListener("beforeunload", handleBeforeUnload);
+      return;
+    }
+
+    window.removeEventListener("beforeunload", handleBeforeUnload);
+  },
+  { immediate: true },
+);
+
 onMounted(() => {
   if (typeof window === "undefined") {
     return;
@@ -553,6 +820,14 @@ onMounted(() => {
   window.addEventListener("focus", handleWindowFocus);
   window.addEventListener("online", handleWindowOnline);
   document.addEventListener("visibilitychange", handleVisibilityChange);
+
+  removeFlowNavigationGuard = router.beforeEach((to) => {
+    const nextEndpointId = parseRouteEndpointId(to.params?.endpointId);
+    if (!shouldConfirmFlowNavigation(nextEndpointId)) {
+      return true;
+    }
+    return confirmFlowNavigationLoss();
+  });
 });
 
 onBeforeUnmount(() => {
@@ -563,11 +838,15 @@ onBeforeUnmount(() => {
   if (typeof window !== "undefined") {
     window.removeEventListener("focus", handleWindowFocus);
     window.removeEventListener("online", handleWindowOnline);
+    window.removeEventListener("beforeunload", handleBeforeUnload);
   }
 
   if (typeof document !== "undefined") {
     document.removeEventListener("visibilitychange", handleVisibilityChange);
   }
+
+  removeFlowNavigationGuard?.();
+  removeFlowNavigationGuard = null;
 });
 
 function applyDraftPatch(patch: Partial<EndpointDraft>): void {
@@ -595,8 +874,41 @@ function setActiveWorkspaceTab(tab: RouteWorkspaceTab | null): void {
   });
 }
 
+function setActiveContractSchemaTab(tab: ContractSchemaTab): void {
+  const nextQuery = { ...route.query };
+  if (tab === "response") {
+    delete nextQuery.contractTab;
+  } else {
+    nextQuery.contractTab = tab;
+  }
+
+  void router.replace({
+    query: nextQuery,
+  });
+}
+
 function formatTimestamp(value: string | null | undefined): string {
   return value ? new Date(value).toLocaleString() : "Not available yet";
+}
+
+function formatTelemetryDuration(value: number | null | undefined): string {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "No data";
+  }
+
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1)} s`;
+  }
+
+  return `${value.toFixed(value >= 100 ? 0 : 1)} ms`;
+}
+
+function formatTelemetryPercentage(value: number | null | undefined): string {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "No data";
+  }
+
+  return `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
 }
 
 function deploymentStatusColor(isActive: boolean): string {
@@ -700,7 +1012,6 @@ async function loadRouteRuntimeScaffolding(endpointId: number): Promise<void> {
   isLoadingConnections.value = true;
   flowEditorError.value = null;
   flowValidationError.value = null;
-  connectionManagerError.value = null;
 
   try {
     const [implementation, nextDeployments, nextExecutions, nextConnections] = await Promise.all([
@@ -780,7 +1091,6 @@ async function refreshConnections(): Promise<void> {
   }
 
   isLoadingConnections.value = true;
-  connectionManagerError.value = null;
 
   try {
     connections.value = await listConnections(auth.session.value);
@@ -791,7 +1101,7 @@ async function refreshConnections(): Promise<void> {
       return;
     }
 
-    connectionManagerError.value = describeAdminError(error, "Unable to refresh connections.");
+    pageError.value = describeAdminError(error, "Unable to refresh connections.");
   } finally {
     isLoadingConnections.value = false;
   }
@@ -803,49 +1113,6 @@ async function refreshRouteRuntimeScaffolding(): Promise<void> {
   }
 
   await loadRouteRuntimeScaffolding(selectedEndpoint.value.id);
-}
-
-async function persistConnection(connectionId: number | null, payload: ConnectionPayload): Promise<void> {
-  if (!auth.session.value) {
-    connectionManagerError.value = "Sign in again before managing shared connections.";
-    return;
-  }
-
-  isSavingConnection.value = true;
-  connectionManagerError.value = null;
-
-  try {
-    const savedConnection =
-      connectionId === null
-        ? await createConnection(payload, auth.session.value)
-        : await updateConnection(connectionId, payload, auth.session.value);
-    await refreshConnections();
-    pageSuccess.value =
-      connectionId === null
-        ? `Saved ${savedConnection.name} for ${savedConnection.project}/${savedConnection.environment}.`
-        : `Updated ${savedConnection.name} for ${savedConnection.project}/${savedConnection.environment}.`;
-  } catch (error) {
-    if (error instanceof AdminApiError && error.status === 401) {
-      void auth.logout("Your admin session expired. Sign in again to keep managing connections.");
-      void router.push({ name: "login" });
-      return;
-    }
-
-    connectionManagerError.value = describeAdminError(
-      error,
-      connectionId === null ? "Unable to create connection." : "Unable to update connection.",
-    );
-  } finally {
-    isSavingConnection.value = false;
-  }
-}
-
-async function handleCreateConnection(payload: ConnectionPayload): Promise<void> {
-  await persistConnection(null, payload);
-}
-
-async function handleUpdateConnection(connectionId: number, payload: ConnectionPayload): Promise<void> {
-  await persistConnection(connectionId, payload);
 }
 
 async function saveFlowDefinition(): Promise<void> {
@@ -1001,6 +1268,17 @@ async function handleSave(): Promise<void> {
   fieldErrors.value = errors;
 
   if (!payload || Object.keys(errors).length > 0) {
+    if (activeWorkspaceTab.value === "contract") {
+      if (typeof errors.request_schema === "string") {
+        pageError.value = errors.request_schema;
+        setActiveContractSchemaTab("request");
+      } else if (typeof errors.response_schema === "string") {
+        pageError.value = errors.response_schema;
+        setActiveContractSchemaTab("response");
+      } else {
+        pageError.value = Object.values(errors)[0] ?? "Fix the highlighted route fields before saving.";
+      }
+    }
     return;
   }
 
@@ -1074,7 +1352,7 @@ function openSchemaStudio(): void {
     return;
   }
 
-  void router.push({ name: "schema-editor", params: { endpointId: selectedEndpoint.value.id } });
+  void router.push({ name: "endpoints-edit", params: { endpointId: selectedEndpoint.value.id }, query: { tab: "contract" } });
 }
 
 function openPreview(): void {
@@ -1083,6 +1361,99 @@ function openPreview(): void {
   }
 
   void router.push({ name: "endpoint-preview", params: { endpointId: selectedEndpoint.value.id } });
+}
+
+function openConnectorsPage(): void {
+  void router.push({ name: "connectors" });
+}
+
+function resetContractDraft(): void {
+  if (!selectedEndpoint.value) {
+    return;
+  }
+
+  draft.value = {
+    ...draft.value,
+    request_schema: JSON.parse(JSON.stringify(selectedEndpoint.value.request_schema ?? {})),
+    response_schema: JSON.parse(JSON.stringify(selectedEndpoint.value.response_schema ?? {})),
+    seed_key: selectedEndpoint.value.seed_key ?? "",
+  };
+  activeContractRequestSection.value = "body";
+  pageError.value = null;
+  pageSuccess.value = null;
+}
+
+function resolveContractRequestSectionFromError(message: string): ContractRequestSection {
+  if (message.includes("query parameter")) {
+    return "query";
+  }
+  if (message.includes("path parameter")) {
+    return "path";
+  }
+  return "body";
+}
+
+async function handleContractSave(): Promise<void> {
+  if (!auth.session.value) {
+    pageError.value = "Sign in again before saving contract changes.";
+    return;
+  }
+
+  if (!selectedEndpoint.value) {
+    pageError.value = "Select an endpoint before saving.";
+    return;
+  }
+
+  pageError.value = null;
+  pageSuccess.value = null;
+
+  const contractDraft: EndpointDraft = {
+    ...draftFromEndpoint(selectedEndpoint.value),
+    request_schema: draft.value.request_schema,
+    response_schema: draft.value.response_schema,
+    seed_key: draft.value.seed_key,
+  };
+  const { errors, payload } = buildPayload(contractDraft);
+  fieldErrors.value = errors;
+
+  if (!payload || Object.keys(errors).length > 0) {
+    if (typeof errors.request_schema === "string") {
+      pageError.value = errors.request_schema;
+      activeContractRequestSection.value = resolveContractRequestSectionFromError(errors.request_schema);
+      setActiveContractSchemaTab("request");
+    } else if (typeof errors.response_schema === "string") {
+      pageError.value = errors.response_schema;
+      setActiveContractSchemaTab("response");
+    } else {
+      pageError.value = Object.values(errors)[0] ?? "Fix the highlighted contract fields before saving.";
+    }
+    return;
+  }
+
+  isSaving.value = true;
+
+  try {
+    const updatedEndpoint = await updateEndpoint(selectedEndpoint.value.id, payload, auth.session.value);
+    nextSelectedEndpointDraftOverride = {
+      ...draft.value,
+      request_schema: updatedEndpoint.request_schema ?? {},
+      response_schema: updatedEndpoint.response_schema ?? {},
+      seed_key: updatedEndpoint.seed_key ?? "",
+    };
+    endpoints.value = endpoints.value.map((endpoint) => (endpoint.id === updatedEndpoint.id ? updatedEndpoint : endpoint));
+    lastCatalogSyncAt.value = Date.now();
+    pageSuccess.value = `Saved contract changes for ${updatedEndpoint.name}.`;
+  } catch (error) {
+    if (error instanceof AdminApiError && error.status === 401) {
+      void auth.logout("Your admin session expired. Sign in again before saving contract changes.");
+      void router.push({ name: "login" });
+      return;
+    }
+
+    pageError.value = describeAdminError(error, "Unable to save the route contract.");
+  } finally {
+    isSaving.value = false;
+  }
 }
 
 function replayExecutionInTester(): void {
@@ -1393,6 +1764,257 @@ const activeTitle = computed(() => {
                     Import routes
                   </v-btn>
                 </div>
+
+                <v-divider class="my-6" />
+
+                <v-row class="browse-metrics-grid" density="comfortable">
+                  <v-col cols="12" md="6" xl="3">
+                    <v-sheet class="browse-metric-card pa-4" rounded="lg">
+                      <div class="text-overline text-medium-emphasis">Total routes</div>
+                      <div class="text-h5 font-weight-bold" data-testid="browse-metric-total-routes">
+                        {{ browseRouteMetrics.total }}
+                      </div>
+                      <div class="text-caption text-medium-emphasis">Catalog records available for editing or preview.</div>
+                    </v-sheet>
+                  </v-col>
+                  <v-col cols="12" md="6" xl="3">
+                    <v-sheet class="browse-metric-card pa-4" rounded="lg">
+                      <div class="text-overline text-medium-emphasis">Public routes</div>
+                      <div class="text-h5 font-weight-bold" data-testid="browse-metric-public-routes">
+                        {{ browseRouteMetrics.publicCount }}
+                      </div>
+                      <div class="text-caption text-medium-emphasis">
+                        Live runtime {{ browseRouteMetrics.liveRuntimeCount }} · Legacy mock {{ browseRouteMetrics.legacyMockCount }}
+                      </div>
+                    </v-sheet>
+                  </v-col>
+                  <v-col cols="12" md="6" xl="3">
+                    <v-sheet class="browse-metric-card pa-4" rounded="lg">
+                      <div class="text-overline text-medium-emphasis">Private or draft</div>
+                      <div class="text-h5 font-weight-bold" data-testid="browse-metric-private-routes">
+                        {{ browseRouteMetrics.privateCount }}
+                      </div>
+                      <div class="text-caption text-medium-emphasis">Not currently available on public API surfaces.</div>
+                    </v-sheet>
+                  </v-col>
+                  <v-col cols="12" md="6" xl="3">
+                    <v-sheet class="browse-metric-card pa-4" rounded="lg">
+                      <div class="text-overline text-medium-emphasis">Disabled routes</div>
+                      <div class="text-h5 font-weight-bold" data-testid="browse-metric-disabled-routes">
+                        {{ browseRouteMetrics.disabledCount }}
+                      </div>
+                      <div class="text-caption text-medium-emphasis">Route-level kill switch is enabled for these routes.</div>
+                    </v-sheet>
+                  </v-col>
+                </v-row>
+
+                <v-row class="browse-mix-grid" density="comfortable">
+                  <v-col cols="12" md="6">
+                    <v-sheet class="browse-metric-card pa-4" rounded="lg">
+                      <div class="text-overline text-medium-emphasis mb-2">Method mix</div>
+                      <div class="d-flex flex-wrap ga-2" data-testid="browse-method-mix">
+                        <v-chip
+                          v-for="entry in browseMethodMix"
+                          :key="entry.label"
+                          color="primary"
+                          label
+                          size="small"
+                          variant="tonal"
+                        >
+                          {{ entry.label }} · {{ entry.count }}
+                        </v-chip>
+                      </div>
+                    </v-sheet>
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-sheet class="browse-metric-card pa-4" rounded="lg">
+                      <div class="text-overline text-medium-emphasis mb-2">Category mix</div>
+                      <div class="d-flex flex-wrap ga-2" data-testid="browse-category-mix">
+                        <v-chip
+                          v-for="entry in browseCategoryMix"
+                          :key="entry.label"
+                          color="secondary"
+                          label
+                          size="small"
+                          variant="tonal"
+                        >
+                          {{ entry.label }} · {{ entry.count }}
+                        </v-chip>
+                      </div>
+                    </v-sheet>
+                  </v-col>
+                </v-row>
+
+                <v-divider class="my-6" />
+
+                <div class="d-flex flex-wrap align-center justify-space-between ga-3 mb-4">
+                  <div>
+                    <div class="text-overline text-secondary">Live telemetry</div>
+                    <div class="text-body-2 text-medium-emphasis">
+                      Based on the latest {{ executionTelemetrySnapshot.sampled_runs }} live runs stored in runtime history.
+                    </div>
+                  </div>
+                  <div class="text-caption text-medium-emphasis">
+                    Last sampled {{ formatTimestamp(executionTelemetrySnapshot.latest_completed_at) }}
+                  </div>
+                </div>
+
+                <v-alert
+                  v-if="executionTelemetryError"
+                  class="mb-4"
+                  border="start"
+                  color="warning"
+                  variant="tonal"
+                >
+                  {{ executionTelemetryError }}
+                </v-alert>
+
+                <v-row class="browse-telemetry-grid" density="comfortable">
+                  <v-col cols="12" md="6" xl="3">
+                    <v-sheet class="browse-metric-card pa-4" rounded="lg">
+                      <div class="text-overline text-medium-emphasis">Recent live runs</div>
+                      <div class="text-h5 font-weight-bold" data-testid="browse-telemetry-runs">
+                        {{ executionTelemetrySnapshot.sampled_runs }}
+                      </div>
+                      <div class="text-caption text-medium-emphasis">
+                        {{ formatTelemetryPercentage(executionTelemetrySnapshot.success_rate) }} success ·
+                        {{ executionTelemetrySnapshot.route_count }} routes observed
+                      </div>
+                    </v-sheet>
+                  </v-col>
+                  <v-col cols="12" md="6" xl="3">
+                    <v-sheet class="browse-metric-card pa-4" rounded="lg">
+                      <div class="text-overline text-medium-emphasis">Average response</div>
+                      <div class="text-h5 font-weight-bold" data-testid="browse-telemetry-avg-response">
+                        {{ formatTelemetryDuration(executionTelemetrySnapshot.average_response_time_ms) }}
+                      </div>
+                      <div class="text-caption text-medium-emphasis">Route wall-clock time across sampled runs.</div>
+                    </v-sheet>
+                  </v-col>
+                  <v-col cols="12" md="6" xl="3">
+                    <v-sheet class="browse-metric-card pa-4" rounded="lg">
+                      <div class="text-overline text-medium-emphasis">P95 response</div>
+                      <div class="text-h5 font-weight-bold" data-testid="browse-telemetry-p95-response">
+                        {{ formatTelemetryDuration(executionTelemetrySnapshot.p95_response_time_ms) }}
+                      </div>
+                      <div class="text-caption text-medium-emphasis">Tail latency to help surface slow outliers.</div>
+                    </v-sheet>
+                  </v-col>
+                  <v-col cols="12" md="6" xl="3">
+                    <v-sheet class="browse-metric-card pa-4" rounded="lg">
+                      <div class="text-overline text-medium-emphasis">Average flow time</div>
+                      <div class="text-h5 font-weight-bold" data-testid="browse-telemetry-avg-flow">
+                        {{ formatTelemetryDuration(executionTelemetrySnapshot.average_flow_time_ms) }}
+                      </div>
+                      <div class="text-caption text-medium-emphasis">
+                        {{ formatTelemetryDuration(executionTelemetrySnapshot.p95_flow_time_ms) }} p95 ·
+                        {{ executionTelemetrySnapshot.average_steps_per_run ?? 0 }} steps/run
+                      </div>
+                    </v-sheet>
+                  </v-col>
+                </v-row>
+
+                <v-row class="browse-telemetry-detail-grid" density="comfortable">
+                  <v-col cols="12" lg="7">
+                    <v-sheet class="browse-metric-card pa-4" rounded="lg">
+                      <div class="d-flex flex-wrap align-center justify-space-between ga-3 mb-3">
+                        <div class="text-overline text-medium-emphasis">Slow routes</div>
+                        <div class="text-caption text-medium-emphasis">
+                          Ranked by average response time from the sampled live traffic.
+                        </div>
+                      </div>
+
+                      <div
+                        v-if="telemetrySlowRoutes.length === 0 && !isLoadingExecutionTelemetry"
+                        class="text-body-2 text-medium-emphasis"
+                      >
+                        No live route telemetry yet.
+                      </div>
+                      <v-skeleton-loader
+                        v-else-if="isLoadingExecutionTelemetry && !hasExecutionTelemetry"
+                        type="list-item-two-line, list-item-two-line, list-item-two-line"
+                      />
+                      <div v-else class="d-flex flex-column ga-3" data-testid="browse-telemetry-slow-routes">
+                        <v-sheet
+                          v-for="{ summary, endpoint } in telemetrySlowRoutes"
+                          :key="`slow-route-${summary.route_id}`"
+                          class="telemetry-row pa-3"
+                          rounded="lg"
+                        >
+                          <div class="d-flex flex-wrap align-center justify-space-between ga-3">
+                            <div>
+                              <div class="font-weight-medium">
+                                {{ endpoint?.name ?? `Route #${summary.route_id}` }}
+                              </div>
+                              <div class="text-caption text-medium-emphasis">
+                                {{ endpoint?.method ?? "ROUTE" }} {{ endpoint?.path ?? `#${summary.route_id}` }}
+                              </div>
+                            </div>
+                            <div class="text-caption text-medium-emphasis">
+                              {{ summary.total_runs }} runs · {{ formatTelemetryPercentage(summary.success_rate) }} success
+                            </div>
+                          </div>
+                          <div class="d-flex flex-wrap ga-2 mt-3">
+                            <v-chip color="primary" label size="small" variant="tonal">
+                              Avg {{ formatTelemetryDuration(summary.average_response_time_ms) }}
+                            </v-chip>
+                            <v-chip color="secondary" label size="small" variant="tonal">
+                              P95 {{ formatTelemetryDuration(summary.p95_response_time_ms) }}
+                            </v-chip>
+                            <v-chip color="info" label size="small" variant="tonal">
+                              Flow {{ formatTelemetryDuration(summary.average_flow_time_ms) }}
+                            </v-chip>
+                          </div>
+                        </v-sheet>
+                      </div>
+                    </v-sheet>
+                  </v-col>
+
+                  <v-col cols="12" lg="5">
+                    <v-sheet class="browse-metric-card pa-4" rounded="lg">
+                      <div class="d-flex flex-wrap align-center justify-space-between ga-3 mb-3">
+                        <div class="text-overline text-medium-emphasis">Slow flow hotspots</div>
+                        <div class="text-caption text-medium-emphasis">
+                          {{ executionTelemetrySnapshot.precise_step_run_count }} runs with per-node timing
+                        </div>
+                      </div>
+
+                      <div
+                        v-if="telemetrySlowFlowSteps.length === 0 && !isLoadingExecutionTelemetry"
+                        class="text-body-2 text-medium-emphasis"
+                      >
+                        No node-level flow telemetry yet.
+                      </div>
+                      <v-skeleton-loader
+                        v-else-if="isLoadingExecutionTelemetry && !hasExecutionTelemetry"
+                        type="list-item-two-line, list-item-two-line, list-item-two-line"
+                      />
+                      <div v-else class="d-flex flex-column ga-3" data-testid="browse-telemetry-slow-steps">
+                        <v-sheet
+                          v-for="{ summary, endpoint } in telemetrySlowFlowSteps"
+                          :key="`slow-step-${summary.route_id}-${summary.node_type}`"
+                          class="telemetry-row pa-3"
+                          rounded="lg"
+                        >
+                          <div class="font-weight-medium">
+                            {{ endpoint?.name ?? `Route #${summary.route_id}` }}
+                          </div>
+                          <div class="text-caption text-medium-emphasis mt-1">
+                            {{ summary.node_type }} · {{ summary.total_steps }} samples
+                          </div>
+                          <div class="d-flex flex-wrap ga-2 mt-3">
+                            <v-chip color="primary" label size="small" variant="tonal">
+                              Avg {{ formatTelemetryDuration(summary.average_duration_ms) }}
+                            </v-chip>
+                            <v-chip color="secondary" label size="small" variant="tonal">
+                              P95 {{ formatTelemetryDuration(summary.p95_duration_ms) }}
+                            </v-chip>
+                          </div>
+                        </v-sheet>
+                      </div>
+                    </v-sheet>
+                  </v-col>
+                </v-row>
               </v-card-text>
             </v-card>
 
@@ -1500,13 +2122,17 @@ const activeTitle = computed(() => {
 
                         <template #append>
                           <div class="d-flex flex-wrap justify-end ga-2">
+                            <v-btn v-if="isContractDirty" prepend-icon="mdi-restore" variant="text" @click="resetContractDraft">
+                              Reset
+                            </v-btn>
                             <v-btn
-                              color="secondary"
-                              prepend-icon="mdi-shape-outline"
-                              variant="tonal"
-                              @click="openSchemaStudio"
+                              color="primary"
+                              :disabled="!isContractDirty"
+                              :loading="isSaving"
+                              prepend-icon="mdi-content-save-outline"
+                              @click="handleContractSave"
                             >
-                              Open schema editor
+                              Save contract
                             </v-btn>
                             <v-btn
                               v-if="canPreviewRoutes"
@@ -1523,33 +2149,29 @@ const activeTitle = computed(() => {
                       <v-divider />
 
                       <v-card-text class="d-flex flex-column ga-4">
-                        <div class="d-flex flex-wrap ga-2">
-                          <v-chip color="primary" label size="small" variant="tonal">{{ draft.method }}</v-chip>
-                          <v-chip label size="small" variant="outlined">{{ draft.path }}</v-chip>
-                          <v-chip label size="small" variant="outlined">Auth: {{ draft.auth_mode }}</v-chip>
-                          <v-chip label size="small" variant="outlined">Success: {{ draft.success_status_code }}</v-chip>
-                        </div>
-
-                        <v-row>
-                          <v-col cols="12" md="6">
-                            <v-sheet class="schema-summary-card" rounded="xl">
-                              <div class="text-overline text-medium-emphasis">Request contract</div>
-                              <div class="text-h6">Current shape</div>
-                              <div class="text-body-2 text-medium-emphasis">{{ requestSummary }}</div>
-                            </v-sheet>
-                          </v-col>
-                          <v-col cols="12" md="6">
-                            <v-sheet class="schema-summary-card" rounded="xl">
-                              <div class="text-overline text-medium-emphasis">Response contract</div>
-                              <div class="text-h6">Current shape</div>
-                              <div class="text-body-2 text-medium-emphasis">{{ responseSummary }}</div>
-                            </v-sheet>
-                          </v-col>
-                        </v-row>
-
-                        <v-alert border="start" color="info" variant="tonal">
-                          Contract authoring still lives in the dedicated schema editor while the route-first tabs settle in.
+                        <v-alert
+                          v-if="hasNonContractDraftChanges"
+                          border="start"
+                          color="info"
+                          variant="tonal"
+                        >
+                          Unsaved Overview edits stay separate from Contract changes. Save or reset the route settings in
+                          <strong>Overview</strong> before expecting path or method changes to appear here.
                         </v-alert>
+
+                        <RouteContractEditor
+                          :active-tab="activeContractSchemaTab"
+                          :active-request-section="activeContractRequestSection"
+                          :path="contractEditorPath"
+                          :request-schema="draft.request_schema"
+                          :response-schema="draft.response_schema"
+                          :seed-key="draft.seed_key"
+                          @update:active-tab="setActiveContractSchemaTab"
+                          @update:active-request-section="activeContractRequestSection = $event"
+                          @update:request-schema="applyDraftPatch({ request_schema: $event })"
+                          @update:response-schema="applyDraftPatch({ response_schema: $event })"
+                          @update:seed-key="applyDraftPatch({ seed_key: $event })"
+                        />
                       </v-card-text>
                     </v-card>
                   </template>
@@ -1632,19 +2254,45 @@ const activeTitle = computed(() => {
                       </v-card-text>
                     </v-card>
 
-                    <ConnectionManagerCard
-                      v-if="!isFlowEditorInFocusMode"
-                      :can-write="canWriteRoutes"
-                      :connections="connections"
-                      :error-message="connectionManagerError"
-                      :is-loading="isLoadingConnections"
-                      :is-saving="isSavingConnection"
-                      :preferred-environment="routeConnectionEnvironment"
-                      :preferred-project="routeConnectionProject"
-                      @create="handleCreateConnection"
-                      @refresh="refreshConnections"
-                      @update="handleUpdateConnection"
-                    />
+                    <v-card v-if="!isFlowEditorInFocusMode" class="workspace-card">
+                      <v-card-item>
+                        <template #prepend>
+                          <v-avatar color="secondary" variant="tonal">
+                            <v-icon icon="mdi-connection" />
+                          </v-avatar>
+                        </template>
+                        <v-card-title>Connector context</v-card-title>
+                        <v-card-subtitle>
+                          Flow nodes bind saved connectors by id. Manage full connector credentials from the dedicated Connectors page.
+                        </v-card-subtitle>
+
+                        <template #append>
+                          <div class="d-flex flex-wrap justify-end ga-2">
+                            <v-btn prepend-icon="mdi-refresh" variant="text" @click="refreshConnections">Refresh</v-btn>
+                            <v-btn color="primary" prepend-icon="mdi-open-in-new" variant="tonal" @click="openConnectorsPage">
+                              Open Connectors
+                            </v-btn>
+                          </div>
+                        </template>
+                      </v-card-item>
+
+                      <v-divider />
+
+                      <v-card-text class="d-flex flex-wrap ga-2" data-testid="flow-connection-context">
+                        <v-chip color="primary" label size="small" variant="tonal">
+                          Scope · {{ routeConnectionScopeLabel }}
+                        </v-chip>
+                        <v-chip label size="small" variant="outlined">
+                          {{ scopedConnectionCount }} in scope
+                        </v-chip>
+                        <v-chip label size="small" variant="outlined">
+                          {{ connections.length }} total saved
+                        </v-chip>
+                        <v-chip v-if="isLoadingConnections" color="secondary" label size="small" variant="tonal">
+                          Syncing…
+                        </v-chip>
+                      </v-card-text>
+                    </v-card>
                   </template>
 
                   <template v-else-if="activeWorkspaceTab === 'test'">
@@ -2185,9 +2833,18 @@ const activeTitle = computed(() => {
 
 .deployment-summary-card,
 .schema-summary-card,
-.runtime-row {
+.runtime-row,
+.browse-metric-card,
+.telemetry-row {
   border: 1px solid rgba(148, 163, 184, 0.16);
   background: color-mix(in srgb, rgb(var(--v-theme-surface)) 94%, rgb(var(--v-theme-background)) 6%);
+}
+
+.browse-metrics-grid,
+.browse-mix-grid,
+.browse-telemetry-grid,
+.browse-telemetry-detail-grid {
+  margin: 0;
 }
 
 .runtime-row--selectable {

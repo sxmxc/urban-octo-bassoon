@@ -91,6 +91,9 @@ Fields:
 - `response_status_code`, `response_body`, `error_message`: execution result metadata
 - `started_at`, `completed_at`: run timestamps
 
+Operational notes:
+- The current admin telemetry overview derives recent route latency from these timestamps before any dedicated time-series store exists.
+
 ## ExecutionStep
 Represents a per-node trace record for one `ExecutionRun`.
 
@@ -101,6 +104,9 @@ Fields:
 - `status`: step result status
 - `input_data`, `output_data`, `error_message`: redaction-safe execution details
 - `started_at`, `completed_at`: trace timestamps
+
+Operational notes:
+- Step timestamps are now recorded per executed node so the admin browse dashboard can highlight slow flow hotspots. Older traces with coarse run-level timings may still exist and should be treated as partial telemetry during aggregation.
 
 ## Preview/examples generation
 The system still generates preview/example responses directly from `response_schema`.

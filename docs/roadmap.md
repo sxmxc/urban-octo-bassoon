@@ -54,18 +54,22 @@ Already shipped:
   - deployments, publish, and unpublish
   - connections
   - executions
+  - execution telemetry overview
 - admin route workspace tabs:
   - `Overview`
   - `Contract`
   - `Flow`
   - `Test`
   - `Deploy`
+- schema authoring now lives directly under the route `Contract` journey, and legacy `/endpoints/:id/schema` links redirect into that tab
 - a clearer `Test` journey and dedicated route tester that now separate admin contract previews from live/public requests and label live versus draft runtime state explicitly
 - execution drill-down in the `Test` workspace, including lazy-loaded run details, ordered step traces, and a replay handoff into the dedicated tester with captured path/query inputs prefilled when available
+- browse-dashboard telemetry cards for recent live runs, average/p95 response time, slow routes, and slow flow hotspots derived from runtime history
 - shared Flow value rendering for runtime and editor inspection, so transform/response mappings can combine whole-value refs with inline `{{...}}` string interpolation
 - selection-aware quick-ref drag/drop in Flow JSON editors, so helper pills replace the current token/selection instead of clobbering the whole draft payload
 - Flow-tab inspector support for binding HTTP and Postgres nodes to saved shared connections
-- Flow-tab scoped connection manager for creating, editing, filtering, and retiring shared connections with lightweight `project` / `environment` metadata
+- dedicated top-level `Connectors` page for shared connection CRUD (create/edit/retire/reactivate/delete) with lightweight `project` / `environment` metadata and in-use delete protections
+- Flow-tab compact connector context (scope/count/refresh + direct link to `Connectors`) while keeping node inspector binding to saved connection ids
 - Flow-tab branch-aware logic editing for first-class `If` / `Switch` nodes
 - Flow node editing now uses the same input/config/output workbench in standard and full-screen modes, with pinned focus-mode previews, schema/table/json preview modes, embedded payload-tree ref pills for common path-template edits, and a focus-toolbar save action that follows the same dirty-state rules as the standard Flow save button
 - maintained drag-and-drop for the schema editor and Flow palette, replacing bespoke native `dataTransfer` wiring with shared drag-preview/drop-target infrastructure
@@ -76,15 +80,15 @@ Already shipped:
 Still transitional:
 - the public runtime still falls back to the legacy schema-driven mock path for routes that have not yet entered the live-runtime lifecycle
 - the new Vue Flow editor now supports branching plus pinned node-level sample data/preview inspection, but it still leans on raw JSON entry instead of richer non-JSON data-mapping ergonomics
-- the new scoped connection manager is intentionally metadata-first; flow nodes still bind explicit saved connection ids rather than auto-resolving by environment at runtime
+- connector scope remains intentionally metadata-first; flow nodes still bind explicit saved connection ids rather than auto-resolving by environment at runtime
 - OpenAPI and `/api/reference.json` now follow the shared public-route policy for runtime-managed routes, but legacy-only routes still remain public until the product fully cuts over to deployment-only publishing
+- browse telemetry is intentionally derived from recent runtime history in Postgres for now; long-horizon retention, alerting, and time-series offload remain future observability work
 
 ## Recommended Implementation Order
 
 ### 1. Improve operator surfaces
 
 After the above:
-- move the schema editor under the route `Contract` journey
 - deployment promotion polish
 - deeper replay/debug tooling once request-capture retention rules are explicit
 - deployment promotion polish

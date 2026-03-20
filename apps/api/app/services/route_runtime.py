@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import math
 import re
+from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 from urllib.parse import unquote, urljoin
 
@@ -24,6 +27,9 @@ from app.models import (
 )
 from app.schemas import (
     ConnectionCreate,
+    ExecutionTelemetryOverview,
+    ExecutionTelemetryRouteSummary,
+    ExecutionTelemetryStepSummary,
     ConnectionUpdate,
     ExecutionRunDetail,
     ExecutionRunRead,
@@ -83,6 +89,8 @@ class ExecutionStepResult:
     input_data: dict[str, Any]
     output_data: dict[str, Any] | None
     error_message: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
 
 @dataclass(slots=True)
@@ -1001,17 +1009,18 @@ def _node_error_result(
     step_input: dict[str, Any],
     error: RouteExecutionError,
     steps: list[ExecutionStepResult],
+    started_at: datetime | None = None,
 ) -> ExecutionResult:
-    steps.append(
-        ExecutionStepResult(
-            node_id=node_id,
-            node_type=node_type,
-            order_index=order_index,
-            status="error",
-            input_data=_to_json_object(_sanitize_trace_value(step_input)),
-            output_data=None,
-            error_message=error.error_message,
-        )
+    _append_execution_step(
+        steps,
+        node_id=node_id,
+        node_type=node_type,
+        order_index=order_index,
+        status="error",
+        input_data=_to_json_object(_sanitize_trace_value(step_input)),
+        output_data=None,
+        error_message=error.error_message,
+        started_at=started_at,
     )
     return ExecutionResult(
         status_code=error.status_code,
@@ -1022,6 +1031,34 @@ def _node_error_result(
         status="error",
         steps=steps,
         error_message=error.error_message,
+    )
+
+
+def _append_execution_step(
+    steps: list[ExecutionStepResult],
+    *,
+    node_id: str,
+    node_type: str,
+    order_index: int,
+    status: str,
+    input_data: dict[str, Any],
+    output_data: dict[str, Any] | None,
+    error_message: str | None = None,
+    started_at: datetime | None = None,
+) -> None:
+    completed_at = utc_now()
+    steps.append(
+        ExecutionStepResult(
+            node_id=node_id,
+            node_type=node_type,
+            order_index=order_index,
+            status=status,
+            input_data=input_data,
+            output_data=output_data,
+            error_message=error_message,
+            started_at=started_at or completed_at,
+            completed_at=completed_at,
+        )
     )
 
 
@@ -1365,6 +1402,7 @@ def execute_live_route(
             },
             "state_keys": list(context["state"].keys()),
         }
+        step_started_at = utc_now()
 
         if node_type == "api_trigger":
             output = {
@@ -1375,15 +1413,15 @@ def execute_live_route(
                     "body_present": context["request"]["body"] is not None,
                 },
             }
-            steps.append(
-                ExecutionStepResult(
-                    node_id=node_id,
-                    node_type=node_type,
-                    order_index=order_index,
-                    status="success",
-                    input_data=step_input,
-                    output_data=output,
-                )
+            _append_execution_step(
+                steps,
+                node_id=node_id,
+                node_type=node_type,
+                order_index=order_index,
+                status="success",
+                input_data=step_input,
+                output_data=output,
+                started_at=step_started_at,
             )
             context["state"][node_id] = output
             next_edge = _single_next_edge(flow, node_id)
@@ -1398,6 +1436,7 @@ def execute_live_route(
                         error_message="api_trigger is missing its next edge.",
                     ),
                     steps=steps,
+                    started_at=step_started_at,
                 )
             current_node_id = next_edge.target
             order_index += 1
@@ -1416,30 +1455,29 @@ def execute_live_route(
             if errors:
                 context["errors"] = errors
                 output = {"valid": False, "errors": errors}
-                steps.append(
-                    ExecutionStepResult(
-                        node_id=node_id,
-                        node_type=node_type,
-                        order_index=order_index,
-                        status="validation_error",
-                        input_data=step_input,
-                        output_data=output,
-                        error_message="; ".join(errors),
-                    )
+                _append_execution_step(
+                    steps,
+                    node_id=node_id,
+                    node_type=node_type,
+                    order_index=order_index,
+                    status="validation_error",
+                    input_data=step_input,
+                    output_data=output,
+                    error_message="; ".join(errors),
+                    started_at=step_started_at,
                 )
                 error_node = flow.error_node
                 if error_node is not None:
                     error_body = _render_template(error_node.get("config", {}).get("body", {"error": "Request validation failed"}), context)
                     error_status_code = int(error_node.get("config", {}).get("status_code", 400))
-                    steps.append(
-                        ExecutionStepResult(
-                            node_id=str(error_node["id"]),
-                            node_type=str(error_node["type"]),
-                            order_index=order_index + 1,
-                            status="success",
-                            input_data={"errors": errors},
-                            output_data={"status_code": error_status_code, "body": _to_json_object(error_body)},
-                        )
+                    _append_execution_step(
+                        steps,
+                        node_id=str(error_node["id"]),
+                        node_type=str(error_node["type"]),
+                        order_index=order_index + 1,
+                        status="success",
+                        input_data={"errors": errors},
+                        output_data={"status_code": error_status_code, "body": _to_json_object(error_body)},
                     )
                     return ExecutionResult(
                         status_code=error_status_code,
@@ -1458,15 +1496,15 @@ def execute_live_route(
                 )
 
             output = {"valid": True}
-            steps.append(
-                ExecutionStepResult(
-                    node_id=node_id,
-                    node_type=node_type,
-                    order_index=order_index,
-                    status="success",
-                    input_data=step_input,
-                    output_data=output,
-                )
+            _append_execution_step(
+                steps,
+                node_id=node_id,
+                node_type=node_type,
+                order_index=order_index,
+                status="success",
+                input_data=step_input,
+                output_data=output,
+                started_at=step_started_at,
             )
             context["state"][node_id] = output
             next_edge = _single_next_edge(flow, node_id)
@@ -1481,6 +1519,7 @@ def execute_live_route(
                         error_message="validate_request is missing its next edge.",
                     ),
                     steps=steps,
+                    started_at=step_started_at,
                 )
             current_node_id = next_edge.target
             order_index += 1
@@ -1489,15 +1528,15 @@ def execute_live_route(
         if node_type == "transform":
             output = _render_template(node.get("config", {}).get("output", {}), context)
             context["state"][node_id] = output
-            steps.append(
-                ExecutionStepResult(
-                    node_id=node_id,
-                    node_type=node_type,
-                    order_index=order_index,
-                    status="success",
-                    input_data=step_input,
-                    output_data=_to_json_object(output),
-                )
+            _append_execution_step(
+                steps,
+                node_id=node_id,
+                node_type=node_type,
+                order_index=order_index,
+                status="success",
+                input_data=step_input,
+                output_data=_to_json_object(output),
+                started_at=step_started_at,
             )
             next_edge = _single_next_edge(flow, node_id)
             if next_edge is None:
@@ -1511,6 +1550,7 @@ def execute_live_route(
                         error_message="transform is missing its next edge.",
                     ),
                     steps=steps,
+                    started_at=step_started_at,
                 )
             current_node_id = next_edge.target
             order_index += 1
@@ -1527,15 +1567,15 @@ def execute_live_route(
                 "right": _sanitize_trace_value(right),
             }
             context["state"][node_id] = output
-            steps.append(
-                ExecutionStepResult(
-                    node_id=node_id,
-                    node_type=node_type,
-                    order_index=order_index,
-                    status="success",
-                    input_data=step_input,
-                    output_data=_to_json_object(output),
-                )
+            _append_execution_step(
+                steps,
+                node_id=node_id,
+                node_type=node_type,
+                order_index=order_index,
+                status="success",
+                input_data=step_input,
+                output_data=_to_json_object(output),
+                started_at=step_started_at,
             )
             if branch_edge is None:
                 return _node_error_result(
@@ -1548,6 +1588,7 @@ def execute_live_route(
                         error_message="if_condition is missing its configured true/false branch edge.",
                     ),
                     steps=steps,
+                    started_at=step_started_at,
                 )
             current_node_id = branch_edge.target
             order_index += 1
@@ -1562,15 +1603,15 @@ def execute_live_route(
                 "case_value": _sanitize_trace_value(selected_edge.case_value) if selected_edge and branch == "case" else None,
             }
             context["state"][node_id] = output
-            steps.append(
-                ExecutionStepResult(
-                    node_id=node_id,
-                    node_type=node_type,
-                    order_index=order_index,
-                    status="success",
-                    input_data=step_input,
-                    output_data=_to_json_object(output),
-                )
+            _append_execution_step(
+                steps,
+                node_id=node_id,
+                node_type=node_type,
+                order_index=order_index,
+                status="success",
+                input_data=step_input,
+                output_data=_to_json_object(output),
+                started_at=step_started_at,
             )
             if selected_edge is None:
                 return _node_error_result(
@@ -1583,6 +1624,7 @@ def execute_live_route(
                         error_message="switch did not resolve to any case or default edge.",
                     ),
                     steps=steps,
+                    started_at=step_started_at,
                 )
             current_node_id = selected_edge.target
             order_index += 1
@@ -1693,23 +1735,23 @@ def execute_live_route(
                     },
                 }
                 context["state"][node_id] = output
-                steps.append(
-                    ExecutionStepResult(
-                        node_id=node_id,
-                        node_type=node_type,
-                        order_index=order_index,
-                        status="success",
-                        input_data=_to_json_object(_sanitize_trace_value(connector_step_input)),
-                        output_data={
-                            "connection": _http_connection_summary(connection),
-                            "response": {
-                                "status_code": int(response_payload["status_code"]),
-                                "content_type": str(response_payload.get("content_type") or ""),
-                                "header_keys": sorted((response_payload.get("headers") or {}).keys()),
-                                "body": _sanitize_trace_value(response_payload.get("body")),
-                            },
+                _append_execution_step(
+                    steps,
+                    node_id=node_id,
+                    node_type=node_type,
+                    order_index=order_index,
+                    status="success",
+                    input_data=_to_json_object(_sanitize_trace_value(connector_step_input)),
+                    output_data={
+                        "connection": _http_connection_summary(connection),
+                        "response": {
+                            "status_code": int(response_payload["status_code"]),
+                            "content_type": str(response_payload.get("content_type") or ""),
+                            "header_keys": sorted((response_payload.get("headers") or {}).keys()),
+                            "body": _sanitize_trace_value(response_payload.get("body")),
                         },
-                    )
+                    },
+                    started_at=step_started_at,
                 )
             except RouteExecutionError as error:
                 return _node_error_result(
@@ -1719,6 +1761,7 @@ def execute_live_route(
                     step_input=connector_step_input,
                     error=error,
                     steps=steps,
+                    started_at=step_started_at,
                 )
             next_edge = _single_next_edge(flow, node_id)
             if next_edge is None:
@@ -1732,6 +1775,7 @@ def execute_live_route(
                         error_message="http_request is missing its next edge.",
                     ),
                     steps=steps,
+                    started_at=step_started_at,
                 )
             current_node_id = next_edge.target
             order_index += 1
@@ -1813,19 +1857,19 @@ def execute_live_route(
                     "rows": rows,
                 }
                 context["state"][node_id] = output
-                steps.append(
-                    ExecutionStepResult(
-                        node_id=node_id,
-                        node_type=node_type,
-                        order_index=order_index,
-                        status="success",
-                        input_data=_to_json_object(_sanitize_trace_value(connector_step_input)),
-                        output_data={
-                            "connection": _http_connection_summary(connection),
-                            "row_count": len(rows),
-                            "rows": _sanitize_trace_value(rows),
-                        },
-                    )
+                _append_execution_step(
+                    steps,
+                    node_id=node_id,
+                    node_type=node_type,
+                    order_index=order_index,
+                    status="success",
+                    input_data=_to_json_object(_sanitize_trace_value(connector_step_input)),
+                    output_data={
+                        "connection": _http_connection_summary(connection),
+                        "row_count": len(rows),
+                        "rows": _sanitize_trace_value(rows),
+                    },
+                    started_at=step_started_at,
                 )
             except RouteExecutionError as error:
                 return _node_error_result(
@@ -1835,6 +1879,7 @@ def execute_live_route(
                     step_input=connector_step_input,
                     error=error,
                     steps=steps,
+                    started_at=step_started_at,
                 )
             next_edge = _single_next_edge(flow, node_id)
             if next_edge is None:
@@ -1848,6 +1893,7 @@ def execute_live_route(
                         error_message="postgres_query is missing its next edge.",
                     ),
                     steps=steps,
+                    started_at=step_started_at,
                 )
             current_node_id = next_edge.target
             order_index += 1
@@ -1860,15 +1906,15 @@ def execute_live_route(
             except (TypeError, ValueError):
                 status_code = int(compiled_route.route_success_status_code or 200)
             body = _render_template(node.get("config", {}).get("body", {}), context)
-            steps.append(
-                ExecutionStepResult(
-                    node_id=node_id,
-                    node_type=node_type,
-                    order_index=order_index,
-                    status="success",
-                    input_data=step_input,
-                    output_data={"status_code": status_code, "body": _to_json_object(body)},
-                )
+            _append_execution_step(
+                steps,
+                node_id=node_id,
+                node_type=node_type,
+                order_index=order_index,
+                status="success",
+                input_data=step_input,
+                output_data={"status_code": status_code, "body": _to_json_object(body)},
+                started_at=step_started_at,
             )
             return ExecutionResult(
                 status_code=status_code,
@@ -1884,15 +1930,15 @@ def execute_live_route(
             except (TypeError, ValueError):
                 status_code = 400
             body = _render_template(node.get("config", {}).get("body", {"error": "Route returned an error response."}), context)
-            steps.append(
-                ExecutionStepResult(
-                    node_id=node_id,
-                    node_type=node_type,
-                    order_index=order_index,
-                    status="success",
-                    input_data=step_input,
-                    output_data={"status_code": status_code, "body": _to_json_object(body)},
-                )
+            _append_execution_step(
+                steps,
+                node_id=node_id,
+                node_type=node_type,
+                order_index=order_index,
+                status="success",
+                input_data=step_input,
+                output_data={"status_code": status_code, "body": _to_json_object(body)},
+                started_at=step_started_at,
             )
             return ExecutionResult(
                 status_code=status_code,
@@ -1911,6 +1957,7 @@ def execute_live_route(
                 error_message=f"Unsupported executable node type '{node_type}'.",
             ),
             steps=steps,
+            started_at=step_started_at,
         )
 
     return ExecutionResult(
@@ -2155,6 +2202,66 @@ def update_connection(session: Session, connection: Connection, payload: Connect
     )
 
 
+def _route_implementation_uses_connection(implementation: RouteImplementation, connection_id: int) -> bool:
+    flow_definition = implementation.flow_definition if isinstance(implementation.flow_definition, dict) else {}
+    raw_nodes = flow_definition.get("nodes")
+    if not isinstance(raw_nodes, list):
+        return False
+
+    for node in raw_nodes:
+        if not isinstance(node, dict):
+            continue
+        config = node.get("config")
+        if not isinstance(config, dict):
+            continue
+        if _coerce_positive_int(config.get("connection_id")) == connection_id:
+            return True
+
+    return False
+
+
+def _connection_usage_route_labels(session: Session, connection_id: int) -> list[str]:
+    implementations = list(session.execute(select(RouteImplementation)).scalars())
+    route_ids = sorted(
+        {
+            int(implementation.route_id)
+            for implementation in implementations
+            if _route_implementation_uses_connection(implementation, connection_id)
+        }
+    )
+    if not route_ids:
+        return []
+
+    routes = list(
+        session.execute(
+            select(EndpointDefinition).where(EndpointDefinition.id.in_(route_ids))
+        ).scalars()
+    )
+    routes_by_id = {int(route.id or 0): route for route in routes}
+    labels: list[str] = []
+    for route_id in route_ids:
+        route = routes_by_id.get(route_id)
+        if route:
+            labels.append(f"{route.method} {route.path}")
+        else:
+            labels.append(f"route #{route_id}")
+    return labels
+
+
+def delete_connection(session: Session, connection: Connection) -> None:
+    route_labels = _connection_usage_route_labels(session, int(connection.id or 0))
+    if route_labels:
+        joined = ", ".join(route_labels[:3])
+        suffix = "" if len(route_labels) <= 3 else f", and {len(route_labels) - 3} more"
+        raise ValueError(
+            f"Connection '{connection.name}' is still used by route flows ({joined}{suffix}). "
+            "Rebind those nodes before deleting this connection."
+        )
+
+    session.delete(connection)
+    session.commit()
+
+
 def list_execution_runs(session: Session, *, route_id: int | None = None, limit: int = 50) -> list[ExecutionRun]:
     statement = select(ExecutionRun)
     if route_id is not None:
@@ -2334,8 +2441,8 @@ def execute_deployed_route_request(
                 input_data=step.input_data,
                 output_data=step.output_data,
                 error_message=step.error_message,
-                started_at=started_at,
-                completed_at=utc_now(),
+                started_at=step.started_at or started_at,
+                completed_at=step.completed_at or utc_now(),
             )
         )
 
@@ -2348,3 +2455,227 @@ def list_execution_run_reads(session: Session, *, route_id: int | None = None, l
         ExecutionRunRead.model_validate(run)
         for run in list_execution_runs(session, route_id=route_id, limit=limit)
     ]
+
+
+def _duration_ms(started_at: datetime | None, completed_at: datetime | None) -> float | None:
+    if started_at is None or completed_at is None:
+        return None
+    return max((completed_at - started_at).total_seconds() * 1000, 0.0)
+
+
+def _rounded(value: float | None) -> float | None:
+    return round(value, 2) if value is not None else None
+
+
+def _mean(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def _p95(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    rank = max(math.ceil(len(ordered) * 0.95) - 1, 0)
+    return ordered[min(rank, len(ordered) - 1)]
+
+
+def _uses_legacy_step_timing(run: ExecutionRun, steps: list[ExecutionStep]) -> bool:
+    if len(steps) <= 1 or run.completed_at is None:
+        return False
+
+    first_started_at = steps[0].started_at
+    first_completed_at = steps[0].completed_at
+    if first_started_at != run.started_at or first_completed_at != run.completed_at:
+        return False
+
+    return all(
+        step.started_at == first_started_at and step.completed_at == first_completed_at
+        for step in steps
+    )
+
+
+def build_execution_telemetry_overview(
+    session: Session,
+    *,
+    limit: int = 200,
+    top: int = 5,
+) -> ExecutionTelemetryOverview:
+    sample_limit = max(1, min(limit, 1000))
+    top_count = max(1, min(top, 10))
+    runs = list_execution_runs(session, limit=sample_limit)
+    overview = ExecutionTelemetryOverview(sample_limit=sample_limit, sampled_runs=len(runs))
+    if not runs:
+        return overview
+
+    run_ids = [int(run.id or 0) for run in runs if int(run.id or 0) > 0]
+    steps_by_run: dict[int, list[ExecutionStep]] = defaultdict(list)
+    if run_ids:
+        steps = list(
+            session.execute(
+                select(ExecutionStep)
+                .where(ExecutionStep.run_id.in_(run_ids))
+                .order_by(ExecutionStep.run_id, ExecutionStep.order_index, ExecutionStep.id)
+            ).scalars()
+        )
+        for step in steps:
+            steps_by_run[int(step.run_id)].append(step)
+
+    route_aggregates: dict[int, dict[str, Any]] = {}
+    flow_step_aggregates: dict[tuple[int, str], dict[str, Any]] = {}
+    response_durations: list[float] = []
+    flow_durations: list[float] = []
+    total_steps = 0
+    precise_step_run_count = 0
+    latest_completed_at: datetime | None = None
+    success_runs = 0
+    error_runs = 0
+
+    for run in runs:
+        run_id = int(run.id or 0)
+        run_steps = steps_by_run.get(run_id, [])
+        total_steps += len(run_steps)
+
+        if run.status == "success":
+            success_runs += 1
+        else:
+            error_runs += 1
+
+        run_duration = _duration_ms(run.started_at, run.completed_at)
+        if run_duration is not None:
+            response_durations.append(run_duration)
+
+        if run.completed_at is not None and (latest_completed_at is None or run.completed_at > latest_completed_at):
+            latest_completed_at = run.completed_at
+
+        precise_step_timing = len(run_steps) > 0 and not _uses_legacy_step_timing(run, run_steps)
+        if precise_step_timing:
+            precise_step_run_count += 1
+
+        step_durations: list[float] = []
+        for step in run_steps:
+            step_duration = _duration_ms(step.started_at, step.completed_at)
+            if step_duration is None:
+                continue
+            step_durations.append(step_duration)
+            if not precise_step_timing:
+                continue
+
+            aggregate_key = (int(run.route_id), step.node_type)
+            aggregate = flow_step_aggregates.setdefault(
+                aggregate_key,
+                {
+                    "route_id": int(run.route_id),
+                    "node_type": step.node_type,
+                    "durations": [],
+                    "total_steps": 0,
+                    "latest_completed_at": None,
+                },
+            )
+            aggregate["durations"].append(step_duration)
+            aggregate["total_steps"] += 1
+            if step.completed_at is not None and (
+                aggregate["latest_completed_at"] is None or step.completed_at > aggregate["latest_completed_at"]
+            ):
+                aggregate["latest_completed_at"] = step.completed_at
+
+        flow_duration = None
+        if step_durations:
+            flow_duration = sum(step_durations) if precise_step_timing else run_duration
+        elif run_duration is not None:
+            flow_duration = run_duration
+
+        if flow_duration is not None:
+            flow_durations.append(flow_duration)
+
+        route_aggregate = route_aggregates.setdefault(
+            int(run.route_id),
+            {
+                "route_id": int(run.route_id),
+                "total_runs": 0,
+                "success_runs": 0,
+                "error_runs": 0,
+                "response_durations": [],
+                "flow_durations": [],
+                "latest_completed_at": None,
+            },
+        )
+        route_aggregate["total_runs"] += 1
+        if run.status == "success":
+            route_aggregate["success_runs"] += 1
+        else:
+            route_aggregate["error_runs"] += 1
+        if run_duration is not None:
+            route_aggregate["response_durations"].append(run_duration)
+        if flow_duration is not None:
+            route_aggregate["flow_durations"].append(flow_duration)
+        if run.completed_at is not None and (
+            route_aggregate["latest_completed_at"] is None or run.completed_at > route_aggregate["latest_completed_at"]
+        ):
+            route_aggregate["latest_completed_at"] = run.completed_at
+
+    route_summaries = [
+        ExecutionTelemetryRouteSummary(
+            route_id=aggregate["route_id"],
+            total_runs=aggregate["total_runs"],
+            success_runs=aggregate["success_runs"],
+            error_runs=aggregate["error_runs"],
+            success_rate=_rounded((aggregate["success_runs"] / aggregate["total_runs"]) * 100),
+            average_response_time_ms=_rounded(_mean(aggregate["response_durations"])),
+            p95_response_time_ms=_rounded(_p95(aggregate["response_durations"])),
+            max_response_time_ms=_rounded(max(aggregate["response_durations"]) if aggregate["response_durations"] else None),
+            average_flow_time_ms=_rounded(_mean(aggregate["flow_durations"])),
+            p95_flow_time_ms=_rounded(_p95(aggregate["flow_durations"])),
+            latest_completed_at=aggregate["latest_completed_at"],
+        )
+        for aggregate in route_aggregates.values()
+    ]
+    route_summaries.sort(
+        key=lambda summary: (
+            summary.average_response_time_ms or 0,
+            summary.p95_response_time_ms or 0,
+            summary.total_runs,
+        ),
+        reverse=True,
+    )
+
+    flow_step_summaries = [
+        ExecutionTelemetryStepSummary(
+            route_id=aggregate["route_id"],
+            node_type=aggregate["node_type"],
+            total_steps=aggregate["total_steps"],
+            average_duration_ms=_rounded(_mean(aggregate["durations"])),
+            p95_duration_ms=_rounded(_p95(aggregate["durations"])),
+            max_duration_ms=_rounded(max(aggregate["durations"]) if aggregate["durations"] else None),
+            latest_completed_at=aggregate["latest_completed_at"],
+        )
+        for aggregate in flow_step_aggregates.values()
+    ]
+    flow_step_summaries.sort(
+        key=lambda summary: (
+            summary.average_duration_ms or 0,
+            summary.p95_duration_ms or 0,
+            summary.total_steps,
+        ),
+        reverse=True,
+    )
+
+    return ExecutionTelemetryOverview(
+        sample_limit=sample_limit,
+        sampled_runs=len(runs),
+        sampled_steps=sum(summary.total_steps for summary in flow_step_summaries),
+        route_count=len(route_summaries),
+        success_runs=success_runs,
+        error_runs=error_runs,
+        success_rate=_rounded((success_runs / len(runs)) * 100),
+        average_response_time_ms=_rounded(_mean(response_durations)),
+        p95_response_time_ms=_rounded(_p95(response_durations)),
+        average_flow_time_ms=_rounded(_mean(flow_durations)),
+        p95_flow_time_ms=_rounded(_p95(flow_durations)),
+        average_steps_per_run=_rounded(total_steps / len(runs) if runs else None),
+        latest_completed_at=latest_completed_at,
+        precise_step_run_count=precise_step_run_count,
+        slow_routes=route_summaries[:top_count],
+        slow_flow_steps=flow_step_summaries[:top_count],
+    )

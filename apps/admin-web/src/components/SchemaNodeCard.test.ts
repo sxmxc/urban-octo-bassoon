@@ -4,6 +4,29 @@ import { createNode } from "../schemaBuilder";
 import { vuetify } from "../plugins/vuetify";
 
 describe("SchemaNodeCard", () => {
+  it("does not render a redundant node-type badge beside the key pill", () => {
+    const node = createNode("string", "response", {
+      id: "field-id",
+      name: "id",
+    });
+
+    const { container } = render(SchemaNodeCard, {
+      props: {
+        activeNodeId: "field-id",
+        node,
+        parentId: "parent-root",
+        parentType: "object",
+        root: false,
+        scope: "response",
+      },
+      global: {
+        plugins: [vuetify],
+      },
+    });
+
+    expect(container.querySelector(".schema-node-kind-pill")).toBeNull();
+  });
+
   it("keeps nested selection on the clicked child card", async () => {
     const childNode = createNode("string", "response", {
       id: "child-quote",

@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
 
@@ -329,6 +330,220 @@ def test_route_runtime_scaffolding_endpoints_publish_and_record_executions(empty
         "transform",
         "set_response",
     ]
+
+
+def test_execution_telemetry_overview_reports_slow_routes_and_flow_hotspots(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    first_route_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="Fast route", path="/api/fast-route"),
+        headers=headers,
+    )
+    assert first_route_response.status_code == 201
+    first_route = first_route_response.json()
+
+    second_route_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="Slow route", path="/api/slow-route"),
+        headers=headers,
+    )
+    assert second_route_response.status_code == 201
+    second_route = second_route_response.json()
+
+    base_time = datetime(2026, 3, 20, 1, 0, 0, tzinfo=timezone.utc)
+    with Session(engine) as session:
+        fast_run_one = ExecutionRun(
+            route_id=first_route["id"],
+            environment="production",
+            method="GET",
+            path=first_route["path"],
+            status="success",
+            request_data={},
+            response_status_code=200,
+            response_body={"ok": True},
+            started_at=base_time,
+            completed_at=base_time + timedelta(milliseconds=100),
+        )
+        session.add(fast_run_one)
+        session.flush()
+        session.add_all(
+            [
+                ExecutionStep(
+                    run_id=int(fast_run_one.id or 0),
+                    node_id="validate",
+                    node_type="validate_request",
+                    order_index=0,
+                    status="success",
+                    input_data={},
+                    output_data={"valid": True},
+                    started_at=base_time,
+                    completed_at=base_time + timedelta(milliseconds=30),
+                ),
+                ExecutionStep(
+                    run_id=int(fast_run_one.id or 0),
+                    node_id="response",
+                    node_type="set_response",
+                    order_index=1,
+                    status="success",
+                    input_data={},
+                    output_data={"status_code": 200},
+                    started_at=base_time + timedelta(milliseconds=30),
+                    completed_at=base_time + timedelta(milliseconds=80),
+                ),
+            ]
+        )
+
+        fast_run_two_started = base_time + timedelta(minutes=1)
+        fast_run_two = ExecutionRun(
+            route_id=first_route["id"],
+            environment="production",
+            method="GET",
+            path=first_route["path"],
+            status="success",
+            request_data={},
+            response_status_code=200,
+            response_body={"ok": True},
+            started_at=fast_run_two_started,
+            completed_at=fast_run_two_started + timedelta(milliseconds=200),
+        )
+        session.add(fast_run_two)
+        session.flush()
+        session.add_all(
+            [
+                ExecutionStep(
+                    run_id=int(fast_run_two.id or 0),
+                    node_id="validate",
+                    node_type="validate_request",
+                    order_index=0,
+                    status="success",
+                    input_data={},
+                    output_data={"valid": True},
+                    started_at=fast_run_two_started,
+                    completed_at=fast_run_two_started + timedelta(milliseconds=40),
+                ),
+                ExecutionStep(
+                    run_id=int(fast_run_two.id or 0),
+                    node_id="query",
+                    node_type="postgres_query",
+                    order_index=1,
+                    status="success",
+                    input_data={},
+                    output_data={"row_count": 1},
+                    started_at=fast_run_two_started + timedelta(milliseconds=40),
+                    completed_at=fast_run_two_started + timedelta(milliseconds=160),
+                ),
+            ]
+        )
+
+        slow_run_started = base_time + timedelta(minutes=2)
+        slow_run = ExecutionRun(
+            route_id=second_route["id"],
+            environment="production",
+            method="GET",
+            path=second_route["path"],
+            status="error",
+            request_data={},
+            response_status_code=502,
+            response_body={"error": "upstream failed"},
+            error_message="timeout",
+            started_at=slow_run_started,
+            completed_at=slow_run_started + timedelta(milliseconds=500),
+        )
+        session.add(slow_run)
+        session.flush()
+        session.add_all(
+            [
+                ExecutionStep(
+                    run_id=int(slow_run.id or 0),
+                    node_id="call",
+                    node_type="http_request",
+                    order_index=0,
+                    status="error",
+                    input_data={},
+                    output_data=None,
+                    error_message="timeout",
+                    started_at=slow_run_started,
+                    completed_at=slow_run_started + timedelta(milliseconds=400),
+                ),
+                ExecutionStep(
+                    run_id=int(slow_run.id or 0),
+                    node_id="error",
+                    node_type="error_response",
+                    order_index=1,
+                    status="success",
+                    input_data={},
+                    output_data={"status_code": 502},
+                    started_at=slow_run_started + timedelta(milliseconds=400),
+                    completed_at=slow_run_started + timedelta(milliseconds=450),
+                ),
+            ]
+        )
+        session.commit()
+
+    telemetry_response = client.get("/api/admin/telemetry/executions?limit=10&top=3", headers=headers)
+    assert telemetry_response.status_code == 200
+    telemetry = telemetry_response.json()
+
+    assert telemetry["sampled_runs"] == 3
+    assert telemetry["route_count"] == 2
+    assert telemetry["sampled_steps"] == 6
+    assert telemetry["precise_step_run_count"] == 3
+    assert telemetry["success_runs"] == 2
+    assert telemetry["error_runs"] == 1
+    assert telemetry["success_rate"] == 66.67
+    assert telemetry["average_response_time_ms"] == 266.67
+    assert telemetry["p95_response_time_ms"] == 500.0
+    assert telemetry["average_flow_time_ms"] == 230.0
+    assert telemetry["p95_flow_time_ms"] == 450.0
+    assert telemetry["average_steps_per_run"] == 2.0
+
+    assert telemetry["slow_routes"][0] == {
+        "route_id": second_route["id"],
+        "total_runs": 1,
+        "success_runs": 0,
+        "error_runs": 1,
+        "success_rate": 0.0,
+        "average_response_time_ms": 500.0,
+        "p95_response_time_ms": 500.0,
+        "max_response_time_ms": 500.0,
+        "average_flow_time_ms": 450.0,
+        "p95_flow_time_ms": 450.0,
+        "latest_completed_at": "2026-03-20T01:02:00.500000",
+    }
+    assert telemetry["slow_routes"][1] == {
+        "route_id": first_route["id"],
+        "total_runs": 2,
+        "success_runs": 2,
+        "error_runs": 0,
+        "success_rate": 100.0,
+        "average_response_time_ms": 150.0,
+        "p95_response_time_ms": 200.0,
+        "max_response_time_ms": 200.0,
+        "average_flow_time_ms": 120.0,
+        "p95_flow_time_ms": 160.0,
+        "latest_completed_at": "2026-03-20T01:01:00.200000",
+    }
+
+    assert telemetry["slow_flow_steps"][0] == {
+        "route_id": second_route["id"],
+        "node_type": "http_request",
+        "total_steps": 1,
+        "average_duration_ms": 400.0,
+        "p95_duration_ms": 400.0,
+        "max_duration_ms": 400.0,
+        "latest_completed_at": "2026-03-20T01:02:00.400000",
+    }
+    assert telemetry["slow_flow_steps"][1] == {
+        "route_id": first_route["id"],
+        "node_type": "postgres_query",
+        "total_steps": 1,
+        "average_duration_ms": 120.0,
+        "p95_duration_ms": 120.0,
+        "max_duration_ms": 120.0,
+        "latest_completed_at": "2026-03-20T01:01:00.160000",
+    }
 
 
 def test_live_flow_mapping_can_compose_inline_strings_from_request_and_state(empty_db):
@@ -810,6 +1025,96 @@ def test_runtime_connections_reject_too_long_scope_name(empty_db):
     )
     assert response.status_code == 400
     assert "Connection project must be 120 characters or fewer." in response.json()["detail"]
+
+
+def test_runtime_connections_can_be_deleted_when_not_referenced(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    create_response = client.post(
+        "/api/admin/connections",
+        json={
+            "project": "default",
+            "environment": "production",
+            "name": "Delete me",
+            "connector_type": "http",
+            "description": None,
+            "config": {"base_url": "https://api.example.com"},
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+    connection_id = create_response.json()["id"]
+
+    delete_response = client.delete(f"/api/admin/connections/{connection_id}", headers=headers)
+    assert delete_response.status_code == 204
+
+    list_response = client.get("/api/admin/connections", headers=headers)
+    assert list_response.status_code == 200
+    assert list_response.json() == []
+
+
+def test_runtime_connections_delete_rejects_referenced_connection(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    create_connection_response = client.post(
+        "/api/admin/connections",
+        json={
+            "project": "default",
+            "environment": "production",
+            "name": "Orders upstream",
+            "connector_type": "http",
+            "description": None,
+            "config": {"base_url": "https://api.example.com"},
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert create_connection_response.status_code == 201
+    connection_id = create_connection_response.json()["id"]
+
+    create_endpoint_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="Connection reference route", path="/api/connection-reference"),
+        headers=headers,
+    )
+    assert create_endpoint_response.status_code == 201
+    endpoint = create_endpoint_response.json()
+
+    upsert_response = client.put(
+        f"/api/admin/endpoints/{endpoint['id']}/implementation/current",
+        json={
+            "flow_definition": {
+                "schema_version": 1,
+                "nodes": [
+                    {"id": "trigger", "type": "api_trigger", "config": {}},
+                    {
+                        "id": "http-1",
+                        "type": "http_request",
+                        "config": {
+                            "connection_id": connection_id,
+                            "method": "GET",
+                            "path": "/status",
+                        },
+                    },
+                    {"id": "response", "type": "set_response", "config": {"status_code": 200, "body": {"ok": True}}},
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "http-1"},
+                    {"source": "http-1", "target": "response"},
+                ],
+            },
+        },
+        headers=headers,
+    )
+    assert upsert_response.status_code == 200
+
+    delete_response = client.delete(f"/api/admin/connections/{connection_id}", headers=headers)
+    assert delete_response.status_code == 400
+    assert "still used by route flows" in delete_response.json()["detail"]
+    assert "GET /api/connection-reference" in delete_response.json()["detail"]
 
 
 def test_route_runtime_rejects_invalid_connector_node_config(empty_db):

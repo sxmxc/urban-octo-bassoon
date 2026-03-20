@@ -350,3 +350,46 @@ class ExecutionRunRead(BaseModel):
 
 class ExecutionRunDetail(ExecutionRunRead):
     steps: List[ExecutionStepRead] = Field(default_factory=list)
+
+
+class ExecutionTelemetryRouteSummary(BaseModel):
+    route_id: int
+    total_runs: int
+    success_runs: int
+    error_runs: int
+    success_rate: Optional[float] = None
+    average_response_time_ms: Optional[float] = None
+    p95_response_time_ms: Optional[float] = None
+    max_response_time_ms: Optional[float] = None
+    average_flow_time_ms: Optional[float] = None
+    p95_flow_time_ms: Optional[float] = None
+    latest_completed_at: Optional[datetime] = None
+
+
+class ExecutionTelemetryStepSummary(BaseModel):
+    route_id: int
+    node_type: str
+    total_steps: int
+    average_duration_ms: Optional[float] = None
+    p95_duration_ms: Optional[float] = None
+    max_duration_ms: Optional[float] = None
+    latest_completed_at: Optional[datetime] = None
+
+
+class ExecutionTelemetryOverview(BaseModel):
+    sample_limit: int = 200
+    sampled_runs: int = 0
+    sampled_steps: int = 0
+    route_count: int = 0
+    success_runs: int = 0
+    error_runs: int = 0
+    success_rate: Optional[float] = None
+    average_response_time_ms: Optional[float] = None
+    p95_response_time_ms: Optional[float] = None
+    average_flow_time_ms: Optional[float] = None
+    p95_flow_time_ms: Optional[float] = None
+    average_steps_per_run: Optional[float] = None
+    latest_completed_at: Optional[datetime] = None
+    precise_step_run_count: int = 0
+    slow_routes: List[ExecutionTelemetryRouteSummary] = Field(default_factory=list)
+    slow_flow_steps: List[ExecutionTelemetryStepSummary] = Field(default_factory=list)

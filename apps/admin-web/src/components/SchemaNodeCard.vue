@@ -312,10 +312,6 @@ function toggleCollapsed(): void {
         </span>
       </button>
 
-      <v-chip class="schema-node-kind-pill" label size="small" variant="tonal">
-        {{ node.type }}
-      </v-chip>
-
       <v-chip
         v-if="collapsedSummary"
         class="schema-node-collapsed-pill"

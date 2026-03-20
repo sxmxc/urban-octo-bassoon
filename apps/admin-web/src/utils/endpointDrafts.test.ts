@@ -1,4 +1,4 @@
-import { createDuplicateDraft } from "./endpointDrafts";
+import { buildPayload, createDuplicateDraft, draftFromEndpoint } from "./endpointDrafts";
 import type { Endpoint } from "../types/endpoints";
 
 function createEndpoint(overrides: Partial<Endpoint> = {}): Endpoint {
@@ -90,5 +90,34 @@ describe("createDuplicateDraft", () => {
 
     expect(sourceRequestSchema.properties.limit.type).toBe("integer");
     expect(sourceResponseSchema.properties.deviceId.type).toBe("string");
+  });
+});
+
+describe("buildPayload", () => {
+  it("rejects invalid request parameter definitions carried in the request contract", () => {
+    const draft = draftFromEndpoint(createEndpoint({
+      request_schema: {
+        type: "object",
+        "x-request": {
+          query: {
+            type: "object",
+            properties: {
+              "": {
+                type: "string",
+              },
+            },
+            required: [],
+            "x-builder": {
+              order: [""],
+            },
+          },
+        },
+      },
+    }));
+
+    const { errors, payload } = buildPayload(draft);
+
+    expect(payload).toBeUndefined();
+    expect(errors.request_schema).toBe("Every query parameter needs a name before you can save.");
   });
 });

@@ -16,6 +16,7 @@ import type {
   EndpointPayload,
   ExecutionRun,
   ExecutionRunDetail,
+  ExecutionTelemetryOverview,
   JsonObject,
   JsonValue,
   PreviewResponsePayload,
@@ -43,6 +44,11 @@ interface ConnectionListOptions {
 interface ExecutionListOptions {
   endpointId?: number;
   limit?: number;
+}
+
+interface ExecutionTelemetryOptions {
+  limit?: number;
+  top?: number;
 }
 
 export class AdminApiError extends Error {
@@ -380,6 +386,12 @@ export function updateConnection(connectionId: number, payload: ConnectionPayloa
   });
 }
 
+export function deleteConnection(connectionId: number, session: AdminSession): Promise<null> {
+  return request<null>(`/api/admin/connections/${connectionId}`, session, {
+    method: "DELETE",
+  });
+}
+
 export function listExecutions(
   session: AdminSession,
   options: ExecutionListOptions = {},
@@ -398,6 +410,22 @@ export function listExecutions(
 
 export function getExecution(runId: number, session: AdminSession): Promise<ExecutionRunDetail> {
   return request<ExecutionRunDetail>(`/api/admin/executions/${runId}`, session);
+}
+
+export function getExecutionTelemetryOverview(
+  session: AdminSession,
+  options: ExecutionTelemetryOptions = {},
+): Promise<ExecutionTelemetryOverview> {
+  const params = new URLSearchParams();
+  if (typeof options.limit === "number") {
+    params.set("limit", String(options.limit));
+  }
+  if (typeof options.top === "number") {
+    params.set("top", String(options.top));
+  }
+
+  const query = params.toString();
+  return request<ExecutionTelemetryOverview>(`/api/admin/telemetry/executions${query ? `?${query}` : ""}`, session);
 }
 
 export function previewResponse(

@@ -7,6 +7,7 @@ import EndpointsView from "./EndpointsView.vue";
 import {
   deleteEndpoint,
   getExecution,
+  getExecutionTelemetryOverview,
   getCurrentRouteImplementation,
   listConnections,
   listExecutions,
@@ -15,9 +16,19 @@ import {
   publishRouteImplementation,
   saveCurrentRouteImplementation,
   unpublishRouteDeployment,
+  updateEndpoint,
 } from "../api/admin";
 import { vuetify } from "../plugins/vuetify";
-import type { Connection, Endpoint, EndpointDraft, ExecutionRun, ExecutionRunDetail, RouteDeployment, RouteImplementation } from "../types/endpoints";
+import type {
+  Connection,
+  Endpoint,
+  EndpointDraft,
+  ExecutionRun,
+  ExecutionRunDetail,
+  ExecutionTelemetryOverview,
+  RouteDeployment,
+  RouteImplementation,
+} from "../types/endpoints";
 
 const authStub = vi.hoisted(() => ({
   logout: vi.fn(),
@@ -60,6 +71,7 @@ vi.mock("../api/admin", async () => {
     getCurrentRouteImplementation: vi.fn(),
     listConnections: vi.fn(),
     listExecutions: vi.fn(),
+    getExecutionTelemetryOverview: vi.fn(),
     listEndpoints: vi.fn(),
     listRouteDeployments: vi.fn(),
     getExecution: vi.fn(),
@@ -137,6 +149,7 @@ const EndpointSettingsFormStub = defineComponent({
       <div v-if="showContractCard">
         <div data-testid="identity-fields">Name Method Path</div>
         <button type="button">{{ isCreating ? "Create route" : "Save changes" }}</button>
+        <button type="button" @click="$emit('open-schema')">Open contract</button>
         <button type="button" @click="$emit('delete')">Delete route</button>
       </div>
       <div data-testid="draft-name">{{ draft.name }}</div>
@@ -199,29 +212,50 @@ const RouteFlowEditorStub = defineComponent({
 });
 
 // eslint-disable-next-line vue/one-component-per-file
-const ConnectionManagerCardStub = defineComponent({
+const RouteContractEditorStub = defineComponent({
   props: {
-    connections: {
-      type: Array as () => Connection[],
-      default: () => [],
-    },
-    preferredProject: {
+    activeTab: {
       type: String,
-      default: "default",
+      default: "response",
     },
-    preferredEnvironment: {
+    activeRequestSection: {
       type: String,
-      default: "production",
+      default: "body",
     },
   },
-  emits: ["create", "refresh", "update"],
+  emits: ["update:activeTab", "update:activeRequestSection", "update:requestSchema", "update:responseSchema", "update:seedKey"],
   template: `
-    <div data-testid="connection-manager">
-      <div data-testid="connection-manager-count">{{ connections.length }}</div>
-      <div data-testid="connection-manager-scope">{{ preferredProject }} / {{ preferredEnvironment }}</div>
-      <div data-testid="connection-manager-names">
-        {{ connections.map((connection) => \`\${connection.name} · \${connection.connector_type} · \${connection.project}/\${connection.environment}\`).join(" | ") }}
-      </div>
+    <div data-testid="route-contract-editor">
+      <div data-testid="route-contract-editor-tab">{{ activeTab }}</div>
+      <div data-testid="route-contract-editor-request-section">{{ activeRequestSection }}</div>
+      <button type="button" @click="$emit('update:activeTab', 'request')">Show request schema</button>
+      <button type="button" @click="$emit('update:activeTab', 'response')">Show response schema</button>
+      <button
+        type="button"
+        @click="$emit('update:responseSchema', { type: 'object', properties: { status: { type: 'string' } } })"
+      >
+        Edit response schema
+      </button>
+      <button
+        type="button"
+        @click="$emit('update:requestSchema', {
+          type: 'object',
+          'x-request': {
+            query: {
+              type: 'object',
+              properties: {
+                '': { type: 'string' },
+              },
+              required: [],
+              'x-builder': {
+                order: [''],
+              },
+            },
+          },
+        })"
+      >
+        Edit invalid request schema
+      </button>
     </div>
   `,
 });
@@ -233,6 +267,7 @@ function createRouterInstance() {
     history: createMemoryHistory(),
     routes: [
       { path: "/login", name: "login", component: viewStub },
+      { path: "/connectors", name: "connectors", component: viewStub },
       { path: "/endpoints", name: "endpoints-browse", component: viewStub },
       { path: "/endpoints/new", name: "endpoints-create", component: viewStub },
       { path: "/endpoints/:endpointId", name: "endpoints-edit", component: viewStub },
@@ -397,6 +432,28 @@ function createConnection(id: number): Connection {
   };
 }
 
+function createTelemetryOverview(overrides: Partial<ExecutionTelemetryOverview> = {}): ExecutionTelemetryOverview {
+  return {
+    sample_limit: 200,
+    sampled_runs: 0,
+    sampled_steps: 0,
+    route_count: 0,
+    success_runs: 0,
+    error_runs: 0,
+    success_rate: null,
+    average_response_time_ms: null,
+    p95_response_time_ms: null,
+    average_flow_time_ms: null,
+    p95_flow_time_ms: null,
+    average_steps_per_run: null,
+    latest_completed_at: null,
+    precise_step_run_count: 0,
+    slow_routes: [],
+    slow_flow_steps: [],
+    ...overrides,
+  };
+}
+
 function createDeferred<T>(): {
   promise: Promise<T>;
   resolve: (value: T | PromiseLike<T>) => void;
@@ -426,9 +483,9 @@ async function renderView(path: string, mode: "browse" | "create" | "edit") {
       global: {
         plugins: [vuetify, router],
         stubs: {
-          ConnectionManagerCard: ConnectionManagerCardStub,
           EndpointCatalog: EndpointCatalogStub,
           EndpointSettingsForm: EndpointSettingsFormStub,
+          RouteContractEditor: RouteContractEditorStub,
           RouteFlowEditor: RouteFlowEditorStub,
         },
       },
@@ -441,6 +498,7 @@ describe("EndpointsView", () => {
     vi.mocked(deleteEndpoint).mockReset();
     vi.mocked(getCurrentRouteImplementation).mockReset();
     vi.mocked(getExecution).mockReset();
+    vi.mocked(getExecutionTelemetryOverview).mockReset();
     vi.mocked(listConnections).mockReset();
     vi.mocked(listExecutions).mockReset();
     vi.mocked(listEndpoints).mockReset();
@@ -448,6 +506,7 @@ describe("EndpointsView", () => {
     vi.mocked(publishRouteImplementation).mockReset();
     vi.mocked(saveCurrentRouteImplementation).mockReset();
     vi.mocked(unpublishRouteDeployment).mockReset();
+    vi.mocked(updateEndpoint).mockReset();
     authStub.logout.mockReset();
     authStub.canPreviewRoutes.value = true;
     authStub.canWriteRoutes.value = true;
@@ -455,6 +514,7 @@ describe("EndpointsView", () => {
     vi.mocked(getCurrentRouteImplementation).mockResolvedValue(createImplementation(1));
     vi.mocked(listRouteDeployments).mockResolvedValue([createDeployment(1)]);
     vi.mocked(listExecutions).mockResolvedValue([createExecution(1)]);
+    vi.mocked(getExecutionTelemetryOverview).mockResolvedValue(createTelemetryOverview());
     vi.mocked(listConnections).mockResolvedValue([createConnection(1)]);
     vi.mocked(getExecution).mockResolvedValue(createExecutionDetail(1));
     vi.mocked(publishRouteImplementation).mockResolvedValue(createDeployment(1));
@@ -463,6 +523,11 @@ describe("EndpointsView", () => {
       createDeployment(1, {
         is_active: false,
         updated_at: "2026-03-18T00:01:00Z",
+      }),
+    );
+    vi.mocked(updateEndpoint).mockResolvedValue(
+      createEndpoint(1, {
+        updated_at: "2026-03-16T00:01:00Z",
       }),
     );
     vi.mocked(deleteEndpoint).mockResolvedValue(null);
@@ -560,6 +625,186 @@ describe("EndpointsView", () => {
     });
   });
 
+  it("shows browse-mode route metrics from the loaded catalog", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([
+      createEndpoint(1, {
+        name: "Live GET",
+        method: "GET",
+        category: "users",
+        publication_status: {
+          code: "published_live",
+          label: "Published live",
+          tone: "success",
+          enabled: true,
+          is_public: true,
+          is_live: true,
+          uses_legacy_mock: false,
+          has_saved_implementation: true,
+          has_runtime_history: true,
+          has_deployment_history: true,
+          has_active_deployment: true,
+          active_deployment_environment: "production",
+          active_implementation_id: 1,
+          active_deployment_id: 1,
+        },
+      }),
+      createEndpoint(2, {
+        name: "Legacy POST",
+        method: "POST",
+        category: "operations",
+        publication_status: {
+          code: "legacy_mock",
+          label: "Legacy mock",
+          tone: "secondary",
+          enabled: true,
+          is_public: true,
+          is_live: false,
+          uses_legacy_mock: true,
+          has_saved_implementation: false,
+          has_runtime_history: false,
+          has_deployment_history: false,
+          has_active_deployment: false,
+          active_deployment_environment: null,
+          active_implementation_id: null,
+          active_deployment_id: null,
+        },
+      }),
+      createEndpoint(3, {
+        name: "Draft GET",
+        method: "GET",
+        category: "users",
+        publication_status: {
+          code: "draft_only",
+          label: "Draft only",
+          tone: "warning",
+          enabled: true,
+          is_public: false,
+          is_live: false,
+          uses_legacy_mock: false,
+          has_saved_implementation: true,
+          has_runtime_history: true,
+          has_deployment_history: false,
+          has_active_deployment: false,
+          active_deployment_environment: null,
+          active_implementation_id: null,
+          active_deployment_id: null,
+        },
+      }),
+      createEndpoint(4, {
+        name: "Disabled DELETE",
+        method: "DELETE",
+        category: "",
+        enabled: false,
+        publication_status: {
+          code: "disabled",
+          label: "Disabled",
+          tone: "error",
+          enabled: false,
+          is_public: false,
+          is_live: false,
+          uses_legacy_mock: false,
+          has_saved_implementation: false,
+          has_runtime_history: false,
+          has_deployment_history: false,
+          has_active_deployment: false,
+          active_deployment_environment: null,
+          active_implementation_id: null,
+          active_deployment_id: null,
+        },
+      }),
+    ]);
+
+    await renderView("/endpoints", "browse");
+    await flushPromises();
+
+    expect(screen.getByTestId("browse-metric-total-routes")).toHaveTextContent("4");
+    expect(screen.getByTestId("browse-metric-public-routes")).toHaveTextContent("2");
+    expect(screen.getByTestId("browse-metric-private-routes")).toHaveTextContent("2");
+    expect(screen.getByTestId("browse-metric-disabled-routes")).toHaveTextContent("1");
+
+    expect(screen.getByTestId("browse-method-mix")).toHaveTextContent("GET · 2");
+    expect(screen.getByTestId("browse-method-mix")).toHaveTextContent("POST · 1");
+    expect(screen.getByTestId("browse-method-mix")).toHaveTextContent("DELETE · 1");
+
+    expect(screen.getByTestId("browse-category-mix")).toHaveTextContent("users · 2");
+    expect(screen.getByTestId("browse-category-mix")).toHaveTextContent("operations · 1");
+    expect(screen.getByTestId("browse-category-mix")).toHaveTextContent("Uncategorized · 1");
+  });
+
+  it("shows browse-mode telemetry metrics and slow-route summaries from execution history", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([
+      createEndpoint(1, {
+        name: "Fast route",
+        method: "GET",
+        path: "/api/fast-route",
+      }),
+      createEndpoint(2, {
+        name: "Slow route",
+        method: "POST",
+        path: "/api/slow-route",
+      }),
+    ]);
+    vi.mocked(getExecutionTelemetryOverview).mockResolvedValue(
+      createTelemetryOverview({
+        sampled_runs: 8,
+        sampled_steps: 24,
+        route_count: 2,
+        success_runs: 7,
+        error_runs: 1,
+        success_rate: 87.5,
+        average_response_time_ms: 182.4,
+        p95_response_time_ms: 420.9,
+        average_flow_time_ms: 164.2,
+        p95_flow_time_ms: 388.6,
+        average_steps_per_run: 3,
+        latest_completed_at: "2026-03-20T03:40:00Z",
+        precise_step_run_count: 6,
+        slow_routes: [
+          {
+            route_id: 2,
+            total_runs: 5,
+            success_runs: 4,
+            error_runs: 1,
+            success_rate: 80,
+            average_response_time_ms: 320.1,
+            p95_response_time_ms: 501.2,
+            max_response_time_ms: 540.2,
+            average_flow_time_ms: 285.4,
+            p95_flow_time_ms: 472.6,
+            latest_completed_at: "2026-03-20T03:40:00Z",
+          },
+        ],
+        slow_flow_steps: [
+          {
+            route_id: 2,
+            node_type: "postgres_query",
+            total_steps: 4,
+            average_duration_ms: 210.4,
+            p95_duration_ms: 340.9,
+            max_duration_ms: 351.5,
+            latest_completed_at: "2026-03-20T03:39:58Z",
+          },
+        ],
+      }),
+    );
+
+    await renderView("/endpoints", "browse");
+    await flushPromises();
+
+    expect(screen.getByTestId("browse-telemetry-runs")).toHaveTextContent("8");
+    expect(screen.getByTestId("browse-telemetry-avg-response")).toHaveTextContent("182 ms");
+    expect(screen.getByTestId("browse-telemetry-p95-response")).toHaveTextContent("421 ms");
+    expect(screen.getByTestId("browse-telemetry-avg-flow")).toHaveTextContent("164 ms");
+
+    expect(screen.getByTestId("browse-telemetry-slow-routes")).toHaveTextContent("Slow route");
+    expect(screen.getByTestId("browse-telemetry-slow-routes")).toHaveTextContent("POST /api/slow-route");
+    expect(screen.getByTestId("browse-telemetry-slow-routes")).toHaveTextContent("Avg 320 ms");
+    expect(screen.getByTestId("browse-telemetry-slow-routes")).toHaveTextContent("P95 501 ms");
+
+    expect(screen.getByTestId("browse-telemetry-slow-steps")).toHaveTextContent("postgres_query");
+    expect(screen.getByTestId("browse-telemetry-slow-steps")).toHaveTextContent("Avg 210 ms");
+  });
+
   it("keeps route identity fields and the create action visible on the overview create flow", async () => {
     vi.mocked(listEndpoints).mockResolvedValue([]);
 
@@ -578,6 +823,105 @@ describe("EndpointsView", () => {
 
     expect(screen.getByTestId("identity-fields")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+  });
+
+  it("routes overview contract actions to the route Contract tab", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
+
+    const { router } = await renderView("/endpoints/1", "edit");
+    await flushPromises();
+    const pushSpy = vi.spyOn(router, "push");
+
+    await fireEvent.click(screen.getByRole("button", { name: "Open contract" }));
+    await flushPromises();
+
+    expect(pushSpy).toHaveBeenCalledWith({
+      name: "endpoints-edit",
+      params: { endpointId: 1 },
+      query: { tab: "contract" },
+    });
+  });
+
+  it("renders the embedded contract editor and keeps contract tab selection in query state", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
+
+    const { router } = await renderView("/endpoints/1?tab=contract&contractTab=request", "edit");
+    await flushPromises();
+    const replaceSpy = vi.spyOn(router, "replace");
+
+    expect(screen.getByTestId("route-contract-editor")).toBeInTheDocument();
+    expect(screen.getByTestId("route-contract-editor-tab")).toHaveTextContent("request");
+
+    await fireEvent.click(screen.getByRole("button", { name: "Show response schema" }));
+    await flushPromises();
+
+    expect(replaceSpy).toHaveBeenCalledWith({
+      query: {
+        tab: "contract",
+      },
+    });
+  });
+
+  it("shows contract validation errors when in-tab contract save fails", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
+
+    await renderView("/endpoints/1?tab=contract", "edit");
+    await flushPromises();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Edit invalid request schema" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Save contract" }));
+    await flushPromises();
+
+    expect(screen.getByText("Every query parameter needs a name before you can save.")).toBeInTheDocument();
+    expect(screen.getByTestId("route-contract-editor-tab")).toHaveTextContent("request");
+    expect(screen.getByTestId("route-contract-editor-request-section")).toHaveTextContent("query");
+  });
+
+  it("saves contract changes without persisting dirty overview fields", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
+    vi.mocked(updateEndpoint).mockResolvedValue(
+      createEndpoint(1, {
+        name: "List users",
+        response_schema: {
+          type: "object",
+          properties: {
+            status: { type: "string" },
+          },
+        },
+        updated_at: "2026-03-16T00:02:00Z",
+      }),
+    );
+
+    const { router } = await renderView("/endpoints/1", "edit");
+    await flushPromises();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Edit draft" }));
+    await router.push({ name: "endpoints-edit", params: { endpointId: 1 }, query: { tab: "contract" } });
+    await flushPromises();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Edit response schema" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Save contract" }));
+    await flushPromises();
+
+    expect(vi.mocked(updateEndpoint)).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        name: "List users",
+        response_schema: {
+          type: "object",
+          properties: {
+            status: { type: "string" },
+          },
+        },
+      }),
+      expect.objectContaining({ token: "session-token" }),
+    );
+
+    await router.push({ name: "endpoints-edit", params: { endpointId: 1 } });
+    await flushPromises();
+
+    expect(screen.getByTestId("draft-name")).toHaveTextContent("Working copy");
+    expect(screen.getByText("Saved contract changes for List users.")).toBeInTheDocument();
   });
 
   it("deletes the selected route and returns to browse mode", async () => {
@@ -610,8 +954,9 @@ describe("EndpointsView", () => {
     expect(screen.getByTestId("route-flow-editor")).toBeInTheDocument();
     expect(screen.getByTestId("route-flow-success")).toHaveTextContent("200");
     expect(screen.getByTestId("route-flow-connections")).toHaveTextContent("1");
-    expect(screen.getByTestId("connection-manager-scope")).toHaveTextContent("default / production");
-    expect(screen.getByTestId("connection-manager-names")).toHaveTextContent("Connection 1 · http · default/production");
+    expect(screen.getByTestId("flow-connection-context")).toHaveTextContent("Scope · default / production");
+    expect(screen.getByTestId("flow-connection-context")).toHaveTextContent("1 in scope");
+    expect(screen.getByTestId("flow-connection-context")).toHaveTextContent("1 total saved");
     expect(vi.mocked(getCurrentRouteImplementation)).toHaveBeenCalledWith(
       1,
       expect.objectContaining({ token: "session-token" }),
@@ -649,6 +994,57 @@ describe("EndpointsView", () => {
       }),
       expect.objectContaining({ token: "session-token" }),
     );
+  });
+
+  it("opens the dedicated connectors page from flow connector context", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
+    const { router } = await renderView("/endpoints/1?tab=flow", "edit");
+    await flushPromises();
+    const pushSpy = vi.spyOn(router, "push");
+
+    await fireEvent.click(screen.getByRole("button", { name: "Open Connectors" }));
+    await flushPromises();
+
+    expect(pushSpy).toHaveBeenCalledWith({ name: "connectors" });
+  });
+
+  it("warns before browser unload when the flow draft is dirty", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
+
+    await renderView("/endpoints/1?tab=flow", "edit");
+    await flushPromises();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Make flow dirty" }));
+    await flushPromises();
+
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("blocks switching to another route record when unsaved flow changes are not confirmed", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([
+      createEndpoint(1, { name: "List users" }),
+      createEndpoint(2, { name: "List invoices" }),
+    ]);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    const { router } = await renderView("/endpoints/1?tab=flow", "edit");
+    await flushPromises();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Make flow dirty" }));
+    await flushPromises();
+
+    await router.push({ name: "endpoints-edit", params: { endpointId: 2 }, query: { tab: "flow" } });
+    await flushPromises();
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      "You have unsaved Flow changes. Leave this route and discard the current flow draft?",
+    );
+    expect(router.currentRoute.value.params.endpointId).toBe("1");
+
+    confirmSpy.mockRestore();
   });
 
   it("makes the Test tab explicit about contract preview versus live runtime state", async () => {
@@ -790,18 +1186,18 @@ describe("EndpointsView", () => {
     });
   });
 
-  it("hides the shared connections card while the flow editor is in focus mode", async () => {
+  it("hides the flow connector context card while the flow editor is in focus mode", async () => {
     vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
 
     await renderView("/endpoints/1?tab=flow", "edit");
     await flushPromises();
 
-    expect(screen.getByTestId("connection-manager")).toBeInTheDocument();
+    expect(screen.getByTestId("flow-connection-context")).toBeInTheDocument();
 
     await fireEvent.click(screen.getByRole("button", { name: "Enter focus mode" }));
     await flushPromises();
 
-    expect(screen.queryByTestId("connection-manager")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("flow-connection-context")).not.toBeInTheDocument();
   });
 
   it("lets operators disable the live route from the Deploy tab without deleting the draft", async () => {
