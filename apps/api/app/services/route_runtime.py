@@ -5,7 +5,7 @@ import math
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Any
 from urllib.parse import unquote, urljoin
 
@@ -598,7 +598,23 @@ def _sanitize_trace_value(value: Any, *, depth: int = 0) -> Any:
     if isinstance(value, str) and len(value) > TRACE_MAX_STRING_LENGTH:
         return f"{value[:TRACE_MAX_STRING_LENGTH - 3]}..."
 
-    return value
+    return _json_safe_value(value)
+
+
+def _json_safe_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _json_safe_value(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [_json_safe_value(child) for child in value]
+    if isinstance(value, tuple):
+        return [_json_safe_value(child) for child in value]
+    if isinstance(value, set):
+        return [_json_safe_value(child) for child in value]
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    if isinstance(value, (bool, int, float, str)) or value is None:
+        return value
+    return str(value)
 
 
 def _coerce_positive_int(raw_value: Any) -> int | None:
@@ -1047,14 +1063,16 @@ def _append_execution_step(
     started_at: datetime | None = None,
 ) -> None:
     completed_at = utc_now()
+    safe_input_data = _to_json_object(_json_safe_value(input_data))
+    safe_output_data = _to_json_object(_json_safe_value(output_data)) if output_data is not None else None
     steps.append(
         ExecutionStepResult(
             node_id=node_id,
             node_type=node_type,
             order_index=order_index,
             status=status,
-            input_data=input_data,
-            output_data=output_data,
+            input_data=safe_input_data,
+            output_data=safe_output_data,
             error_message=error_message,
             started_at=started_at or completed_at,
             completed_at=completed_at,
@@ -2430,7 +2448,7 @@ def execute_deployed_route_request(
             "body_present": request_body is not None,
         },
         response_status_code=result.status_code,
-        response_body=_to_json_object(result.body),
+        response_body=_to_json_object(_json_safe_value(result.body)),
         error_message=result.error_message,
         started_at=started_at,
         completed_at=utc_now(),

@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     api_host: str = Field(default="0.0.0.0", validation_alias="API_HOST")
     api_port: int = Field(default=8000, validation_alias="API_PORT")
     log_level: str = Field(default="info", validation_alias="API_LOG_LEVEL")
-    app_version: str = Field(default="2.0.0-alpha.1", validation_alias="APP_VERSION")
+    app_version: str = Field(default="2.0.0-alpha.2", validation_alias="APP_VERSION")
 
     postgres_user: str = Field(default="mockadmin", validation_alias="POSTGRES_USER")
     postgres_password: str = Field(default="mockpassword", validation_alias="POSTGRES_PASSWORD")

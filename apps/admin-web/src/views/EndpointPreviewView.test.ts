@@ -253,9 +253,12 @@ describe("EndpointPreviewView", () => {
       expect.objectContaining({ token: "session-token" }),
       {
         queryParameters: { status: "" },
-        requestBody: {},
+        requestBody: { value: 1 },
       },
     );
+
+    const requestBodyField = screen.getByLabelText("Request body") as HTMLTextAreaElement;
+    expect(JSON.parse(requestBodyField.value)).toEqual({ value: 1 });
 
     await fireEvent.update(screen.getByLabelText("Path parameter: orderId"), "ord-123");
     await fireEvent.update(screen.getByLabelText("Query parameter: status"), "queued");
@@ -315,6 +318,33 @@ describe("EndpointPreviewView", () => {
       }),
     );
     expect(codeBlocks[1]).toHaveTextContent('"source": "live"');
+  });
+
+  it("shows an explicit null override in request preview when the shared body input is cleared", async () => {
+    const view = await renderView();
+    await flushPromises();
+
+    await fireEvent.update(screen.getByLabelText("Path parameter: orderId"), "ord-123");
+    await fireEvent.update(screen.getByLabelText("Request body"), "");
+    await fireEvent.click(screen.getByRole("button", { name: "Request preview" }));
+    await flushPromises();
+
+    const requestPreviewBlock = view.container.querySelectorAll("pre.code-block")[0];
+    expect(requestPreviewBlock).toHaveTextContent('"request_body": {');
+    expect(requestPreviewBlock).toHaveTextContent('"value": 1');
+    expect(requestPreviewBlock).toHaveTextContent('"live_request_body_input": null');
+
+    await fireEvent.click(screen.getByRole("button", { name: "Send live request" }));
+    await flushPromises();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/orders/ord-123",
+      expect.objectContaining({
+        method: "POST",
+        body: undefined,
+        headers: undefined,
+      }),
+    );
   });
 
   it("routes contract editing back into the route Contract tab", async () => {
@@ -417,7 +447,33 @@ describe("EndpointPreviewView", () => {
       expect.objectContaining({ token: "session-token" }),
       {
         queryParameters: { status: "queued" },
-        requestBody: {},
+        requestBody: { value: 1 },
+      },
+    );
+  });
+
+  it("leaves the request body input blank when a body route has no saved request-body contract", async () => {
+    vi.mocked(getEndpoint).mockResolvedValue(
+      createEndpoint({
+        request_schema: null,
+      }),
+    );
+
+    await renderView();
+    await flushPromises();
+
+    const requestBodyField = screen.getByLabelText("Request body") as HTMLTextAreaElement;
+    expect(requestBodyField.value).toBe("");
+    expect(vi.mocked(previewResponse)).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: "object",
+      }),
+      "seed-1",
+      { orderId: "sample-orderId" },
+      expect.objectContaining({ token: "session-token" }),
+      {
+        queryParameters: {},
+        requestBody: null,
       },
     );
   });
