@@ -97,7 +97,11 @@ const contractRequestPreviewText = computed(() => {
     previewPayload.request_body = contractRequestBodySample.value;
 
     const trimmedBody = requestBody.value.trim();
-    if (trimmedBody) {
+    if (!trimmedBody) {
+      if (contractRequestBodySample.value !== null) {
+        previewPayload.live_request_body_input = null;
+      }
+    } else {
       try {
         const parsedBody = JSON.parse(trimmedBody) as JsonValue;
         if (JSON.stringify(parsedBody) !== JSON.stringify(contractRequestBodySample.value)) {

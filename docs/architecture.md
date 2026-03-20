@@ -16,7 +16,7 @@ The current milestone is the **first branch-aware live-flow slice**:
 - backend runtime scaffolding is in place
 - admin workflow tabs are in place
 - the route `Test` workspace and dedicated route tester now separate admin contract preview from live/public request execution, with explicit draft/live state summaries
-- the route tester's `Request preview` now derives its request-body sample from the saved request contract instead of merely echoing the shared test textarea state
+- the route tester's `Request preview` now derives its request-body sample from the saved request contract instead of merely echoing the shared test textarea state, and it records an explicit null live-body override when operators clear the textarea for a body route
 - request/response schema authoring now lives directly in the route `Contract` tab, and legacy schema-editor deep links redirect into that in-workspace journey
 - the route `Test` workspace now also supports lazy-loaded execution drill-down plus a replay handoff into the dedicated tester using captured path/query trace data
 - the route browse dashboard now also surfaces basic live telemetry from runtime history, including average/p95 latency plus slow-route and slow-flow hotspot summaries

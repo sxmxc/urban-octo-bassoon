@@ -20,6 +20,7 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [ ] (none)
 
 ## Done
+- [x] Include empty-body overrides in tester `Request preview` so clearing a body-route textarea shows the live request will send no body
 - [x] Make the tester `Request preview` reflect the saved request contract/schema, including an accurate request-body preview, instead of primarily echoing shared test inputs
 - [x] Fix deployed `Postgres Query` routes so execution-trace persistence no longer throws `500` when connector results include `datetime`-like values
 - [x] Fix the remaining full-screen `Flow` inspector pointer-layering bug so dropdowns, connection selectors, and `Remove path` are reliably mouse-usable in focus mode
