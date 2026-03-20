@@ -1,5 +1,10 @@
 # DECISIONS
 
+## 2026-03-19: Focus-mode Flow editing uses a 3-pane node workbench
+- **Workbench layout**: In the full-screen Flow editor, keep selected-node input preview on the left, editable parameters/settings in the center, and output preview on the right instead of collapsing the editor into a skinny right rail or letting the side panes wrap below the fold.
+- **Editing priority**: Keep the center pane focused on actionable controls in focus mode; the first meaningful fields for common nodes such as `HTTP Request` should be reachable without scrolling through explanatory copy first.
+- **Mapping ergonomics**: Reuse the existing inspection snapshot plus ref-drop behavior, and let the input-side schema pills help both JSON mapping fields and common non-JSON template fields such as the HTTP path template rather than inventing a second mapping contract.
+
 ## 2026-03-19: Execution replay stays trace-driven and path/query-scoped for now
 - **First delivery slice**: Use the existing `GET /api/admin/executions/{id}` detail API plus the existing route tester as the first drill-down/replay surface instead of adding a new backend replay endpoint immediately.
 - **Retention boundary**: Seed replay from stored `path_parameters` and `query_parameters` only. Current runtime traces record `body_present` but not raw request bodies, so body replay remains out of scope until retention/redaction rules are explicitly widened.
@@ -84,6 +89,11 @@
 - **Workspace rhythm**: In Flow focus mode, keep the canvas visually primary by defaulting add-node, flow-info, and selected-node tools to small floating launchers instead of leaving every overlay expanded all the time.
 - **Debug surfaces**: Treat route paths and designer JSON as secondary debugging surfaces behind a flow-info popover rather than a permanent bottom-center slab, so graph scanning stays readable on normal desktop heights.
 - **Inspector behavior**: Let node selection open the inspector on demand and keep a small selected-node launcher visible even when the dock is hidden, so detail editing stays one click away without monopolizing the canvas.
+
+## 2026-03-20: Flow node editing should keep one workbench model across standard and focus modes
+- **Editing model**: Use the same `input / config / output` mental model for selected-node editing in both the normal Flow tab and the full-screen canvas workspace instead of making operators relearn a separate inspector layout outside focus mode.
+- **Reference affordance**: Keep helper pills inside the payload preview tree itself, so field discovery and field insertion stay coupled and behave more like a data-mapping tool than a detached token tray.
+- **Save affordance**: Any focus-mode save control must share the same dirty, validation, and loading gates as the standard Flow save action so the canvas toolbar never suggests a second persistence model.
 
 ## 2026-03-18: Flow full-editor should be canvas-native
 - **Workspace model**: Treat Flow focus mode as a dedicated in-canvas workspace that preserves the admin top bar and moves palette, diagnostics, and editing chrome into floating overlays instead of stretching the default page layout to fill more space.

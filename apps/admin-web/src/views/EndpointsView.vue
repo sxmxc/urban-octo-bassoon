@@ -1622,8 +1622,11 @@ const activeTitle = computed(() => {
                           :route-method="draft.method"
                           :route-name="draft.name"
                           :route-path="draft.path"
+                          :save-disabled="!isFlowDirty || Boolean(flowValidationError)"
+                          :save-loading="isSavingImplementation"
                           :success-status-code="draft.success_status_code"
                           @focus-mode-change="isFlowEditorInFocusMode = $event"
+                          @save-requested="saveFlowDefinition"
                           @validation-change="flowValidationError = $event"
                         />
                       </v-card-text>

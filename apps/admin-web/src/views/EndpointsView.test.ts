@@ -13,6 +13,7 @@ import {
   listEndpoints,
   listRouteDeployments,
   publishRouteImplementation,
+  saveCurrentRouteImplementation,
   unpublishRouteDeployment,
 } from "../api/admin";
 import { vuetify } from "../plugins/vuetify";
@@ -63,6 +64,7 @@ vi.mock("../api/admin", async () => {
     listRouteDeployments: vi.fn(),
     getExecution: vi.fn(),
     publishRouteImplementation: vi.fn(),
+    saveCurrentRouteImplementation: vi.fn(),
     unpublishRouteDeployment: vi.fn(),
     createEndpoint: vi.fn(),
     updateEndpoint: vi.fn(),
@@ -158,18 +160,40 @@ const RouteFlowEditorStub = defineComponent({
       type: String,
       default: null,
     },
+    saveDisabled: {
+      type: Boolean,
+      default: false,
+    },
+    saveLoading: {
+      type: Boolean,
+      default: false,
+    },
     successStatusCode: {
       type: Number,
       default: 200,
     },
   },
-  emits: ["update:modelValue", "validation-change", "focus-mode-change"],
+  emits: ["update:modelValue", "validation-change", "focus-mode-change", "save-requested"],
   template: `
     <div data-testid="route-flow-editor">
       <div data-testid="route-flow-success">{{ successStatusCode }}</div>
       <div data-testid="route-flow-connections">{{ availableConnections.length }}</div>
       <div data-testid="route-flow-error">{{ errorMessage ?? "" }}</div>
       <button type="button" @click="$emit('focus-mode-change', true)">Enter focus mode</button>
+      <button
+        type="button"
+        @click="$emit('update:modelValue', {
+          ...modelValue,
+          nodes: [
+            ...modelValue.nodes,
+            { id: 'draft-change', type: 'transform', name: 'Draft change', config: {}, position: { x: 0, y: 0 } },
+          ],
+          edges: [...modelValue.edges],
+        })"
+      >
+        Make flow dirty
+      </button>
+      <button type="button" :disabled="saveDisabled || saveLoading" @click="$emit('save-requested')">Request flow save</button>
     </div>
   `,
 });
@@ -422,6 +446,7 @@ describe("EndpointsView", () => {
     vi.mocked(listEndpoints).mockReset();
     vi.mocked(listRouteDeployments).mockReset();
     vi.mocked(publishRouteImplementation).mockReset();
+    vi.mocked(saveCurrentRouteImplementation).mockReset();
     vi.mocked(unpublishRouteDeployment).mockReset();
     authStub.logout.mockReset();
     authStub.canPreviewRoutes.value = true;
@@ -433,6 +458,7 @@ describe("EndpointsView", () => {
     vi.mocked(listConnections).mockResolvedValue([createConnection(1)]);
     vi.mocked(getExecution).mockResolvedValue(createExecutionDetail(1));
     vi.mocked(publishRouteImplementation).mockResolvedValue(createDeployment(1));
+    vi.mocked(saveCurrentRouteImplementation).mockResolvedValue(createImplementation(1));
     vi.mocked(unpublishRouteDeployment).mockResolvedValue(
       createDeployment(1, {
         is_active: false,
@@ -597,6 +623,31 @@ describe("EndpointsView", () => {
     expect(vi.mocked(listExecutions)).toHaveBeenCalledWith(
       expect.objectContaining({ token: "session-token" }),
       { endpointId: 1, limit: 12 },
+    );
+  });
+
+  it("saves flow when the editor emits save-requested", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
+
+    await renderView("/endpoints/1?tab=flow", "edit");
+    await flushPromises();
+
+    expect(screen.getByRole("button", { name: "Request flow save" })).toBeDisabled();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Make flow dirty" }));
+    await flushPromises();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Request flow save" }));
+    await flushPromises();
+
+    expect(vi.mocked(saveCurrentRouteImplementation)).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        flow_definition: expect.objectContaining({
+          schema_version: 1,
+        }),
+      }),
+      expect.objectContaining({ token: "session-token" }),
     );
   });
 

@@ -67,6 +67,7 @@ Already shipped:
 - Flow-tab inspector support for binding HTTP and Postgres nodes to saved shared connections
 - Flow-tab scoped connection manager for creating, editing, filtering, and retiring shared connections with lightweight `project` / `environment` metadata
 - Flow-tab branch-aware logic editing for first-class `If` / `Switch` nodes
+- Flow node editing now uses the same input/config/output workbench in standard and full-screen modes, with pinned focus-mode previews, schema/table/json preview modes, embedded payload-tree ref pills for common path-template edits, and a focus-toolbar save action that follows the same dirty-state rules as the standard Flow save button
 - maintained drag-and-drop for the schema editor and Flow palette, replacing bespoke native `dataTransfer` wiring with shared drag-preview/drop-target infrastructure
 - shared public-route policy across OpenAPI, `/api/reference.json`, and legacy mock fallback so runtime-managed routes stay public only while they still have an active deployment
 - explicit disable-live workflow in the admin API and `Deploy` tab, which deactivates the active deployment without deleting route or implementation history

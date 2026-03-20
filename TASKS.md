@@ -17,6 +17,7 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [ ] (none)
 
 ## Done
+- [x] Align the Flow node editor around the same input/config/output workbench in both standard and full-screen modes, including embedded payload-tree ref pills and a canvas-toolbar save control in focus mode
 - [x] Ignore stale execution-detail responses when operators change selected runs before earlier requests finish
 - [x] Add execution drill-down and replay tooling on top of the new `ExecutionRun` / `ExecutionStep` records
 - [x] Redirect the API root `/` to `/status` while keeping `/api` empty

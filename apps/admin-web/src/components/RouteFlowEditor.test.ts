@@ -164,6 +164,7 @@ const dndStub = vi.hoisted(() => {
 
 const flowStoreStub = vi.hoisted(() => ({
   fitView: vi.fn(),
+  setCenter: vi.fn(),
   screenToFlowCoordinate: vi.fn(({ x, y }: { x: number; y: number }) => ({ x, y })),
   zoomIn: vi.fn(),
   zoomOut: vi.fn(),
@@ -289,7 +290,48 @@ const baseFlowDefinition: RouteFlowDefinition = {
   ],
 };
 
-function renderEditor() {
+const httpFlowDefinition: RouteFlowDefinition = {
+  schema_version: 1,
+  nodes: [
+    {
+      id: "trigger",
+      type: "api_trigger",
+      name: "API Trigger",
+      config: {},
+      position: { x: 48, y: 56 },
+    },
+    {
+      id: "http-request-1",
+      type: "http_request",
+      name: "HTTP Request",
+      config: {
+        headers: {},
+        method: "GET",
+        path: "/quotes/",
+        query: {},
+      },
+      position: { x: 332, y: 56 },
+    },
+    {
+      id: "response",
+      type: "set_response",
+      name: "Set Response",
+      config: {
+        body: {
+          status: "ok",
+        },
+        status_code: 200,
+      },
+      position: { x: 616, y: 56 },
+    },
+  ],
+  edges: [
+    { source: "trigger", target: "http-request-1" },
+    { source: "http-request-1", target: "response" },
+  ],
+};
+
+function renderEditor(overrideProps: Record<string, unknown> = {}) {
   return render(RouteFlowEditor, {
     props: {
       modelValue: baseFlowDefinition,
@@ -297,6 +339,7 @@ function renderEditor() {
       routeName: "Orders",
       routePath: "/api/orders/{orderId}",
       successStatusCode: 200,
+      ...overrideProps,
     },
     global: {
       plugins: [vuetify],
@@ -308,6 +351,7 @@ beforeEach(() => {
   cleanup();
   dndStub.reset();
   flowStoreStub.fitView.mockReset();
+  flowStoreStub.setCenter.mockReset();
   flowStoreStub.screenToFlowCoordinate.mockClear();
   flowStoreStub.zoomIn.mockReset();
   flowStoreStub.zoomOut.mockReset();
@@ -318,6 +362,147 @@ afterEach(() => {
 });
 
 describe("RouteFlowEditor", () => {
+  it("uses the same input-config-output workbench outside focus mode", async () => {
+    renderEditor();
+
+    await fireEvent.click(screen.getByTestId("canvas-node-transform-1"));
+    await flushPromises();
+
+    expect(screen.getByText("Input payload")).toBeInTheDocument();
+    expect(screen.getByText("Output payload")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Parameters" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByText("Flow signals")).toBeInTheDocument();
+    expect(screen.getByText("Route paths")).toBeInTheDocument();
+    expect(screen.queryByText("Flow sample")).not.toBeInTheDocument();
+  });
+
+  it("shows a three-pane workbench in focus mode with schema/table/json previews", async () => {
+    renderEditor();
+
+    await fireEvent.click(screen.getAllByRole("button", { name: "Open full editor" })[0]);
+    await fireEvent.click(screen.getByTestId("canvas-node-transform-1"));
+    await flushPromises();
+
+    expect(screen.getByText("Input payload")).toBeInTheDocument();
+    expect(screen.getByText("Output payload")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Parameters" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByText("Runtime behavior")).toBeInTheDocument();
+    expect(screen.queryByText("Flow sample")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Node name")).not.toBeInTheDocument();
+
+    await fireEvent.click(screen.getAllByRole("button", { name: "Table" })[0]);
+    expect(screen.getAllByText("Path").length).toBeGreaterThan(0);
+
+    await fireEvent.click(screen.getAllByRole("button", { name: "JSON" })[0]);
+    expect(screen.getAllByText("Data in scope").length).toBeGreaterThan(0);
+
+    await fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByLabelText("Node name")).toBeInTheDocument();
+  });
+
+  it("emits save-requested from the focus toolbar save icon", async () => {
+    const view = renderEditor();
+
+    await fireEvent.click(screen.getAllByRole("button", { name: "Open full editor" })[0]);
+    await flushPromises();
+
+    const saveButton = screen.getByRole("button", { name: "Save flow" });
+    expect(saveButton).toBeInTheDocument();
+
+    await fireEvent.click(saveButton);
+    await flushPromises();
+
+    const emittedEvents = view.emitted() as Record<string, unknown[][]>;
+    expect((emittedEvents["save-requested"] ?? []).length).toBe(1);
+  });
+
+  it("disables the focus toolbar save icon when save is unavailable", async () => {
+    const view = renderEditor({
+      saveDisabled: true,
+    });
+
+    await fireEvent.click(screen.getAllByRole("button", { name: "Open full editor" })[0]);
+    await flushPromises();
+
+    const saveButton = screen.getByRole("button", { name: "Save flow" });
+    expect(saveButton).toBeDisabled();
+
+    await fireEvent.click(saveButton);
+    await flushPromises();
+
+    const emittedEvents = view.emitted() as Record<string, unknown[][]>;
+    expect(emittedEvents["save-requested"]).toBeUndefined();
+  });
+
+  it("lets focus-mode ref pills target the HTTP path template field", async () => {
+    const view = renderEditor({
+      modelValue: httpFlowDefinition,
+    });
+
+    await fireEvent.click(screen.getAllByRole("button", { name: "Open full editor" })[0]);
+    await fireEvent.click(screen.getByTestId("canvas-node-http-request-1"));
+    await flushPromises();
+
+    const pathInput = screen.getByLabelText("Path or URL template") as HTMLInputElement;
+    pathInput.focus();
+    pathInput.setSelectionRange(pathInput.value.length, pathInput.value.length);
+    await fireEvent.focusIn(pathInput);
+    await fireEvent.select(pathInput);
+
+    const sourceElement = Array.from(dndStub.draggables.keys()).find(
+      (element) =>
+        element.textContent?.trim() === "orderId"
+        && element.closest(".route-flow-editor__focus-side-column--left"),
+    );
+    expect(sourceElement).toBeTruthy();
+
+    const targetElement = Array.from(dndStub.dropTargets.keys()).find(
+      (element) =>
+        element.classList.contains("route-flow-editor__text-drop-target") && element.querySelector("input") === pathInput,
+    );
+    expect(targetElement).toBeTruthy();
+
+    dndStub.simulateDrop(sourceElement as Element, targetElement as Element);
+    await flushPromises();
+
+    expect(pathInput.value).toBe("/quotes/{{request.path.orderId}}");
+
+    const emittedEvents = view.emitted() as Record<string, Array<[RouteFlowDefinition]>>;
+    const updates = emittedEvents["update:modelValue"] ?? [];
+    const lastUpdate = updates.at(-1)?.[0] as RouteFlowDefinition | undefined;
+    expect(lastUpdate?.nodes.find((node) => node.id === "http-request-1")?.config.path).toBe(
+      "/quotes/{{request.path.orderId}}",
+    );
+  });
+
+  it("lets clicking a left-pane schema pill insert into the HTTP path template", async () => {
+    renderEditor({
+      modelValue: httpFlowDefinition,
+    });
+
+    await fireEvent.click(screen.getAllByRole("button", { name: "Open full editor" })[0]);
+    await fireEvent.click(screen.getByTestId("canvas-node-http-request-1"));
+    await flushPromises();
+
+    const pathInput = screen.getByLabelText("Path or URL template") as HTMLInputElement;
+    pathInput.focus();
+    pathInput.setSelectionRange(pathInput.value.length, pathInput.value.length);
+    await fireEvent.focusIn(pathInput);
+    await fireEvent.select(pathInput);
+
+    const leftPaneChip = Array.from(document.querySelectorAll(".route-flow-editor__focus-side-column--left .v-chip")).find(
+      (element) => element.textContent?.trim() === "orderId",
+    );
+    expect(leftPaneChip).toBeTruthy();
+
+    await fireEvent.click(leftPaneChip as Element);
+    await flushPromises();
+
+    expect(pathInput.value).toBe("/quotes/{{request.path.orderId}}");
+  });
+
   it("drops a ref snippet into the current JSON selection instead of replacing the whole payload", async () => {
     const view = renderEditor();
 

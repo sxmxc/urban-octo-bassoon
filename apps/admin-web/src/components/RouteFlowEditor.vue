@@ -88,8 +88,30 @@ interface CanvasEdge {
 
 type ReferenceTarget = "transform" | "response" | "error" | "ifLeft" | "ifRight" | "switchValue";
 type JsonConfigTarget = "transform" | "response" | "error" | "httpQuery" | "httpHeaders" | "httpBody" | "postgresParameters";
+type TextConfigTarget = "httpPath";
 type FlexibleConfigTarget = "ifLeft" | "ifRight" | "switchValue";
 type JsonEditorSelection = { start: number; end: number };
+type FocusPreviewMode = "schema" | "table" | "json";
+type FocusEditorTab = "parameters" | "settings";
+type FocusSchemaRow = {
+  depth: number;
+  label: string;
+  preview: string;
+  refPath: string;
+  shape: string;
+};
+type FocusSchemaSection = {
+  label: string;
+  refPath: string;
+  rows: FocusSchemaRow[];
+  shape: string;
+};
+type FocusPreviewTableRow = {
+  path: string;
+  source: string;
+  type: string;
+  value: string;
+};
 const BASE_TRANSFORM_REFERENCE_SNIPPETS = [
   { label: "route.path", value: "route.path" },
   { label: "request.path", value: "request.path" },
@@ -157,6 +179,8 @@ const props = withDefaults(
     routeMethod?: string | null;
     routeName?: string | null;
     routePath?: string | null;
+    saveDisabled?: boolean;
+    saveLoading?: boolean;
     successStatusCode?: number;
   }>(),
   {
@@ -170,6 +194,8 @@ const props = withDefaults(
     routeMethod: "GET",
     routeName: "Draft route",
     routePath: "/api/example",
+    saveDisabled: false,
+    saveLoading: false,
     successStatusCode: 200,
   },
 );
@@ -178,6 +204,7 @@ const emit = defineEmits<{
   "update:modelValue": [value: RouteFlowDefinition];
   "validation-change": [value: string | null];
   "focus-mode-change": [value: boolean];
+  "save-requested": [];
 }>();
 
 const flowDefinitionState = ref<RouteFlowDefinition>(
@@ -216,9 +243,14 @@ const isFocusMode = ref(false);
 const isFocusPaletteOpen = ref(false);
 const isFocusInfoOpen = ref(false);
 const isFocusInspectorOpen = ref(false);
+const focusInputPreviewMode = ref<FocusPreviewMode>("schema");
+const focusOutputPreviewMode = ref<FocusPreviewMode>("schema");
+const focusEditorTab = ref<FocusEditorTab>("parameters");
 let previousBodyOverflow = "";
 const jsonEditorRootElements: Partial<Record<JsonConfigTarget, HTMLElement | null>> = {};
 const jsonEditorSelections: Partial<Record<JsonConfigTarget, JsonEditorSelection>> = {};
+const textEditorRootElements: Partial<Record<TextConfigTarget, HTMLElement | null>> = {};
+const textEditorSelections: Partial<Record<TextConfigTarget, JsonEditorSelection>> = {};
 
 function copyJsonValue<T extends JsonValue>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -631,6 +663,41 @@ const selectedNodeInspection = computed(() => {
 
   return flowInspectionSnapshot.value.nodesById[selectedCanvasNode.value.id] ?? null;
 });
+const focusInputSchemaSections = computed<FocusSchemaSection[]>(() => {
+  const inspection = selectedNodeInspection.value;
+  if (!inspection) {
+    return [];
+  }
+
+  return inspection.scopeEntries.map((entry) => ({
+    label: entry.label,
+    refPath: entry.refPath,
+    rows: buildFocusSchemaRows(entry.sample, entry.refPath),
+    shape: entry.shape,
+  }));
+});
+const focusInputPreviewTableRows = computed<FocusPreviewTableRow[]>(() => {
+  const inspection = selectedNodeInspection.value;
+  if (!inspection) {
+    return [];
+  }
+
+  const rows: FocusPreviewTableRow[] = [];
+  inspection.scopeEntries.forEach((entry) => {
+    flattenPreviewRows(entry.sample, entry.label, entry.refPath, rows);
+  });
+  return rows;
+});
+const focusOutputPreviewTableRows = computed<FocusPreviewTableRow[]>(() => {
+  const inspection = selectedNodeInspection.value;
+  if (!inspection) {
+    return [];
+  }
+
+  const rows: FocusPreviewTableRow[] = [];
+  flattenPreviewRows(inspection.outputSample, inspection.outputTitle, "output", rows);
+  return rows;
+});
 const selectedNodeOnSamplePath = computed(() => {
   const nodeId = selectedCanvasNode.value?.id;
   return nodeId ? flowInspectionSnapshot.value.executedNodeIds.includes(nodeId) : false;
@@ -789,6 +856,14 @@ function autoArrangeCanvas(): void {
   });
 }
 
+function requestSave(): void {
+  if (props.saveDisabled || props.saveLoading) {
+    return;
+  }
+
+  emit("save-requested");
+}
+
 function handleFlowInit(instance: VueFlowStore): void {
   flowInstance.value = instance;
 }
@@ -881,16 +956,19 @@ const canvasDropBinding = computed<PragmaticDropTargetBinding<Record<string, unk
   },
 }));
 
+function resolveEditorRootElement(element: Element | ComponentPublicInstance | null): HTMLElement | null {
+  return element instanceof HTMLElement
+    ? element
+    : element && "$el" in element && element.$el instanceof HTMLElement
+      ? element.$el
+      : null;
+}
+
 function setJsonEditorRootElement(
   target: JsonConfigTarget,
   element: Element | ComponentPublicInstance | null,
 ): void {
-  const root =
-    element instanceof HTMLElement
-      ? element
-      : element && "$el" in element && element.$el instanceof HTMLElement
-        ? element.$el
-        : null;
+  const root = resolveEditorRootElement(element);
   if (root) {
     jsonEditorRootElements[target] = root;
     return;
@@ -900,8 +978,27 @@ function setJsonEditorRootElement(
   delete jsonEditorSelections[target];
 }
 
+function setTextEditorRootElement(
+  target: TextConfigTarget,
+  element: Element | ComponentPublicInstance | null,
+): void {
+  const root = resolveEditorRootElement(element);
+  if (root) {
+    textEditorRootElements[target] = root;
+    return;
+  }
+
+  delete textEditorRootElements[target];
+  delete textEditorSelections[target];
+}
+
 function resolveJsonEditorTextarea(target: JsonConfigTarget): HTMLTextAreaElement | null {
   return jsonEditorRootElements[target]?.querySelector("textarea") ?? null;
+}
+
+function resolveTextEditorControl(target: TextConfigTarget): HTMLInputElement | HTMLTextAreaElement | null {
+  const control = textEditorRootElements[target]?.querySelector("input, textarea");
+  return control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement ? control : null;
 }
 
 function rememberJsonEditorSelection(target: JsonConfigTarget, event?: Event): void {
@@ -913,6 +1010,20 @@ function rememberJsonEditorSelection(target: JsonConfigTarget, event?: Event): v
   const start = textarea.selectionStart ?? textarea.value.length;
   const end = textarea.selectionEnd ?? start;
   jsonEditorSelections[target] = { start, end };
+}
+
+function rememberTextEditorSelection(target: TextConfigTarget, event?: Event): void {
+  const control =
+    event?.target instanceof HTMLInputElement || event?.target instanceof HTMLTextAreaElement
+      ? event.target
+      : resolveTextEditorControl(target);
+  if (!control) {
+    return;
+  }
+
+  const start = control.selectionStart ?? control.value.length;
+  const end = control.selectionEnd ?? start;
+  textEditorSelections[target] = { start, end };
 }
 
 function refreshInspectorDrafts(): void {
@@ -1006,6 +1117,179 @@ function parseJsonValue(rawValue: string, label: string): JsonValue | null {
       __route_flow_error__: error instanceof Error ? `${label} must be valid JSON. ${error.message}` : `${label} must be valid JSON.`,
     };
   }
+}
+
+function previewValueType(value: JsonValue): string {
+  if (value === null) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return "array";
+  }
+  return typeof value === "object" ? "object" : typeof value;
+}
+
+function previewCellValue(value: JsonValue): string {
+  if (value === null) {
+    return "null";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
+function schemaPreviewSummary(value: JsonValue): string {
+  if (value === null) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return value.length === 0 ? "empty list" : `${value.length} item${value.length === 1 ? "" : "s"}`;
+  }
+  if (typeof value === "object") {
+    const keys = Object.keys(value);
+    return keys.length === 0 ? "empty object" : `${keys.length} field${keys.length === 1 ? "" : "s"}`;
+  }
+  return previewCellValue(value);
+}
+
+function appendFocusSchemaRows(
+  value: JsonValue,
+  refPath: string,
+  label: string,
+  rows: FocusSchemaRow[],
+  depth = 0,
+): void {
+  if (rows.length >= 180 || depth > 4) {
+    return;
+  }
+
+  rows.push({
+    depth,
+    label,
+    preview: schemaPreviewSummary(value),
+    refPath,
+    shape: previewValueType(value),
+  });
+
+  if (Array.isArray(value)) {
+    value.slice(0, 20).forEach((item, index) => {
+      appendFocusSchemaRows(item, `${refPath}.${index}`, `[${index}]`, rows, depth + 1);
+    });
+    return;
+  }
+
+  if (value && typeof value === "object") {
+    Object.entries(value)
+      .slice(0, 25)
+      .forEach(([key, child]) => {
+        appendFocusSchemaRows(child, `${refPath}.${key}`, key, rows, depth + 1);
+      });
+  }
+}
+
+function buildFocusSchemaRows(value: JsonValue, rootRefPath: string): FocusSchemaRow[] {
+  const rows: FocusSchemaRow[] = [];
+
+  if (Array.isArray(value)) {
+    value.slice(0, 20).forEach((item, index) => {
+      appendFocusSchemaRows(item, `${rootRefPath}.${index}`, `[${index}]`, rows);
+    });
+    return rows;
+  }
+
+  if (value && typeof value === "object") {
+    Object.entries(value)
+      .slice(0, 25)
+      .forEach(([key, child]) => {
+        appendFocusSchemaRows(child, `${rootRefPath}.${key}`, key, rows);
+      });
+    return rows;
+  }
+
+  rows.push({
+    depth: 0,
+    label: rootRefPath.split(".").pop() ?? rootRefPath,
+    preview: schemaPreviewSummary(value),
+    refPath: rootRefPath,
+    shape: previewValueType(value),
+  });
+  return rows;
+}
+
+function flattenPreviewRows(
+  value: JsonValue,
+  source: string,
+  path: string,
+  rows: FocusPreviewTableRow[],
+  depth = 0,
+): void {
+  if (rows.length >= 240 || depth > 5) {
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      rows.push({
+        source,
+        path,
+        type: "array",
+        value: "[]",
+      });
+      return;
+    }
+
+    value.slice(0, 25).forEach((item, index) => {
+      const childPath = `${path}[${index}]`;
+      rows.push({
+        source,
+        path: childPath,
+        type: previewValueType(item),
+        value: previewCellValue(item),
+      });
+      if (typeof item === "object" && item !== null) {
+        flattenPreviewRows(item, source, childPath, rows, depth + 1);
+      }
+    });
+    return;
+  }
+
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value).slice(0, 50);
+    if (entries.length === 0) {
+      rows.push({
+        source,
+        path,
+        type: "object",
+        value: "{}",
+      });
+      return;
+    }
+
+    entries.forEach(([key, child]) => {
+      const childPath = path ? `${path}.${key}` : key;
+      rows.push({
+        source,
+        path: childPath,
+        type: previewValueType(child),
+        value: previewCellValue(child),
+      });
+      if (typeof child === "object" && child !== null) {
+        flattenPreviewRows(child, source, childPath, rows, depth + 1);
+      }
+    });
+    return;
+  }
+
+  rows.push({
+    source,
+    path,
+    type: previewValueType(value),
+    value: previewCellValue(value),
+  });
 }
 
 function parseFlexibleValue(rawValue: string, label: string): { value: JsonValue | null; error: string | null } {
@@ -1226,6 +1510,10 @@ function buildReferenceSnippet(refPath: string, compact = false): string {
   return compact ? JSON.stringify({ $ref: refPath }) : JSON.stringify({ $ref: refPath }, null, 2);
 }
 
+function buildTemplateReferenceSnippet(refPath: string): string {
+  return `{{${refPath}}}`;
+}
+
 function jsonTargetText(target: JsonConfigTarget): string {
   switch (target) {
     case "transform":
@@ -1242,6 +1530,13 @@ function jsonTargetText(target: JsonConfigTarget): string {
       return httpBodyText.value;
     case "postgresParameters":
       return postgresParametersText.value;
+  }
+}
+
+function textTargetText(target: TextConfigTarget): string {
+  switch (target) {
+    case "httpPath":
+      return httpPathText.value;
   }
 }
 
@@ -1267,6 +1562,14 @@ function applyJsonTargetInput(target: JsonConfigTarget, value: string): void {
       return;
     case "postgresParameters":
       handlePostgresParametersInput(value);
+      return;
+  }
+}
+
+function applyTextTargetInput(target: TextConfigTarget, value: string): void {
+  switch (target) {
+    case "httpPath":
+      handleHttpPathInput(value);
       return;
   }
 }
@@ -1313,6 +1616,34 @@ async function insertJsonReferenceSnippet(target: JsonConfigTarget, refPath: str
   };
 }
 
+async function insertTextReferenceSnippet(target: TextConfigTarget, refPath: string): Promise<void> {
+  const currentValue = textTargetText(target);
+  const control = resolveTextEditorControl(target);
+  const rememberedSelection = textEditorSelections[target];
+  const selectionStart = rememberedSelection?.start ?? control?.selectionStart ?? currentValue.length;
+  const selectionEnd = rememberedSelection?.end ?? control?.selectionEnd ?? selectionStart;
+  const safeStart = Math.max(0, Math.min(selectionStart, currentValue.length));
+  const safeEnd = Math.max(safeStart, Math.min(selectionEnd, currentValue.length));
+  const snippet = buildTemplateReferenceSnippet(refPath);
+  const nextValue = `${currentValue.slice(0, safeStart)}${snippet}${currentValue.slice(safeEnd)}`;
+  const caretPosition = safeStart + snippet.length;
+
+  applyTextTargetInput(target, nextValue);
+  await nextTick();
+
+  const nextControl = resolveTextEditorControl(target);
+  if (!nextControl) {
+    return;
+  }
+
+  nextControl.focus();
+  nextControl.setSelectionRange(caretPosition, caretPosition);
+  textEditorSelections[target] = {
+    start: caretPosition,
+    end: caretPosition,
+  };
+}
+
 function createJsonReferenceDropBinding(
   target: JsonConfigTarget,
 ): PragmaticDropTargetBinding<Record<string, unknown>> {
@@ -1330,6 +1661,23 @@ function createJsonReferenceDropBinding(
   };
 }
 
+function createTextReferenceDropBinding(
+  target: TextConfigTarget,
+): PragmaticDropTargetBinding<Record<string, unknown>> {
+  return {
+    canDrop: ({ sourceData }) => getRouteFlowReferenceDragPayload(sourceData) !== null,
+    dropEffect: "copy",
+    onDrop: ({ sourceData }) => {
+      const payload = getRouteFlowReferenceDragPayload(sourceData);
+      if (!payload) {
+        return;
+      }
+
+      void insertTextReferenceSnippet(target, payload.refPath);
+    },
+  };
+}
+
 const jsonReferenceDropBindings: Record<JsonConfigTarget, PragmaticDropTargetBinding<Record<string, unknown>>> = {
   transform: createJsonReferenceDropBinding("transform"),
   response: createJsonReferenceDropBinding("response"),
@@ -1339,6 +1687,19 @@ const jsonReferenceDropBindings: Record<JsonConfigTarget, PragmaticDropTargetBin
   httpBody: createJsonReferenceDropBinding("httpBody"),
   postgresParameters: createJsonReferenceDropBinding("postgresParameters"),
 };
+const textReferenceDropBindings: Record<TextConfigTarget, PragmaticDropTargetBinding<Record<string, unknown>>> = {
+  httpPath: createTextReferenceDropBinding("httpPath"),
+};
+
+function applyHttpPathTemplateSnippet(refPath: string): void {
+  void insertTextReferenceSnippet("httpPath", refPath);
+}
+
+function handleFocusSchemaSnippetClick(refPath: string): void {
+  if (selectedCanvasNode.value?.data.runtimeType === "http_request") {
+    applyHttpPathTemplateSnippet(refPath);
+  }
+}
 
 function applyReferenceSnippet(target: ReferenceTarget, refPath: string): void {
   const snippet = buildReferenceSnippet(refPath, false);
@@ -1672,7 +2033,13 @@ watch(
 
     if (!node) {
       isFocusInspectorOpen.value = false;
+      focusEditorTab.value = "parameters";
+      focusInputPreviewMode.value = "schema";
+      focusOutputPreviewMode.value = "schema";
+      return;
     }
+
+    focusEditorTab.value = "parameters";
   },
   { immediate: true },
 );
@@ -1946,6 +2313,16 @@ onBeforeUnmount(() => {
                 variant="text"
                 @click="autoArrangeCanvas"
               />
+              <v-btn
+                aria-label="Save flow"
+                class="route-flow-editor__focus-icon-btn"
+                :disabled="props.saveDisabled"
+                icon="mdi-content-save-outline"
+                :loading="props.saveLoading"
+                size="small"
+                variant="text"
+                @click="requestSave"
+              />
               <div class="route-flow-editor__focus-divider" />
               <v-btn
                 class="route-flow-editor__focus-status-btn"
@@ -2155,7 +2532,161 @@ onBeforeUnmount(() => {
           'route-flow-editor__detail-grid--focus': isFocusMode,
         }"
       >
-        <v-col class="route-flow-editor__inspector-column" cols="12" :xl="isFocusMode ? 12 : 8">
+        <v-col
+          v-if="selectedCanvasNode"
+          class="route-flow-editor__focus-side-column route-flow-editor__focus-side-column--left"
+          cols="12"
+          md="3"
+        >
+          <v-sheet class="route-flow-editor__detail-panel route-flow-editor__detail-panel--preview pa-4" rounded="xl">
+            <div class="route-flow-editor__detail-head route-flow-editor__detail-head--stacked">
+              <div>
+                <div class="route-flow-editor__panel-eyebrow">Input payload</div>
+                <div class="route-flow-editor__detail-title route-flow-editor__detail-title--sm">Data in scope</div>
+              </div>
+              <v-chip
+                v-if="selectedNodeInspection"
+                color="secondary"
+                label
+                size="small"
+                variant="tonal"
+              >
+                {{ selectedNodeInspection.inputShape }}
+              </v-chip>
+            </div>
+
+            <v-btn-toggle
+              v-model="focusInputPreviewMode"
+              class="route-flow-editor__preview-toggle mt-3"
+              color="primary"
+              mandatory
+              variant="outlined"
+            >
+              <v-btn value="schema">Schema</v-btn>
+              <v-btn value="table">Table</v-btn>
+              <v-btn value="json">JSON</v-btn>
+            </v-btn-toggle>
+
+            <div v-if="selectedNodeInspection" class="route-flow-editor__preview-scroll mt-3" @wheel.stop>
+              <template v-if="focusInputPreviewMode === 'schema'">
+                <div class="text-caption text-medium-emphasis mb-3">
+                  Drag field pills from this payload tree into the center editor.
+                </div>
+
+                <div class="d-flex flex-column ga-3">
+                  <div
+                    v-for="section in focusInputSchemaSections"
+                    :key="section.refPath"
+                    class="route-flow-editor__schema-section"
+                  >
+                    <div class="d-flex align-start justify-space-between ga-3">
+                      <div>
+                        <v-chip
+                          v-pragmatic-draggable="referenceSnippetDragBinding(section.label, section.refPath)"
+                          class="route-flow-editor__schema-pill"
+                          label
+                          size="small"
+                          variant="outlined"
+                          @click="handleFocusSchemaSnippetClick(section.refPath)"
+                        >
+                          {{ section.label }}
+                        </v-chip>
+                        <div class="text-caption text-medium-emphasis">{{ section.refPath }}</div>
+                      </div>
+                      <v-chip label size="x-small" variant="outlined">
+                        {{ section.shape }}
+                      </v-chip>
+                    </div>
+
+                    <div v-if="section.rows.length === 0" class="text-caption text-medium-emphasis mt-3">
+                      No visible sample fields for this payload.
+                    </div>
+
+                    <div v-else class="route-flow-editor__schema-tree mt-3">
+                      <div
+                        v-for="row in section.rows"
+                        :key="row.refPath"
+                        class="route-flow-editor__schema-row"
+                        :style="{ '--schema-depth': String(row.depth) }"
+                      >
+                        <v-chip
+                          v-pragmatic-draggable="referenceSnippetDragBinding(row.label, row.refPath)"
+                          class="route-flow-editor__schema-pill"
+                          label
+                          size="small"
+                          variant="outlined"
+                          @click="handleFocusSchemaSnippetClick(row.refPath)"
+                        >
+                          {{ row.label }}
+                        </v-chip>
+                        <span class="text-caption text-medium-emphasis route-flow-editor__schema-row-preview">
+                          {{ row.preview }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
+              <template v-else-if="focusInputPreviewMode === 'table'">
+                <v-table density="compact" hover>
+                  <thead>
+                    <tr>
+                      <th class="text-left">Path</th>
+                      <th class="text-left">Type</th>
+                      <th class="text-left">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in focusInputPreviewTableRows" :key="`${row.source}:${row.path}`">
+                      <td class="text-caption">{{ row.path }}</td>
+                      <td class="text-caption">{{ row.type }}</td>
+                      <td class="text-caption route-flow-editor__table-value">{{ row.value }}</td>
+                    </tr>
+                  </tbody>
+                </v-table>
+              </template>
+
+              <template v-else>
+                <div class="d-flex flex-column ga-3">
+                  <div
+                    v-for="entry in selectedNodeInspection.scopeEntries"
+                    :key="entry.refPath"
+                    class="route-flow-editor__sample-entry"
+                  >
+                    <div class="d-flex align-start justify-space-between ga-3">
+                      <div>
+                        <div class="text-body-2 font-weight-medium">{{ entry.label }}</div>
+                        <div class="text-caption text-medium-emphasis">{{ entry.refPath }}</div>
+                      </div>
+                      <v-chip label size="x-small" variant="outlined">
+                        {{ entry.shape }}
+                      </v-chip>
+                    </div>
+                    <pre class="route-flow-editor__json-preview route-flow-editor__json-preview--sample mt-2">{{ entry.json }}</pre>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <v-alert
+              v-else-if="selectedCanvasNode && !selectedNodeOnSamplePath"
+              class="mt-3"
+              border="start"
+              color="info"
+              variant="tonal"
+            >
+              The current generated request sample does not traverse this node path.
+            </v-alert>
+          </v-sheet>
+        </v-col>
+
+        <v-col
+          class="route-flow-editor__inspector-column"
+          cols="12"
+          :md="selectedCanvasNode ? 6 : 12"
+          :xl="selectedCanvasNode ? 6 : 12"
+        >
           <v-sheet class="route-flow-editor__detail-panel pa-4" rounded="xl">
             <div class="route-flow-editor__detail-head">
               <div>
@@ -2167,8 +2698,8 @@ onBeforeUnmount(() => {
                   {{
                     selectedCanvasNode
                       ? isFocusMode
-                        ? "Quick node settings stay docked here."
-                        : "Canvas nodes stay stable while the inspector holds the editing detail."
+                        ? "Edit node parameters and settings here while input/output previews stay pinned on both sides."
+                        : "Edit node parameters and settings here while input/output previews stay visible on both sides."
                       : "Nodes stay compact on the canvas; editing opens here once you pick the path you want to tune."
                   }}
                 </div>
@@ -2195,135 +2726,22 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <div v-if="selectedCanvasNode" class="d-flex flex-column ga-4 mt-4">
-              <v-row class="route-flow-editor__editor-grid">
-                <v-col cols="12" md="5">
-                  <v-sheet class="route-flow-editor__subpanel pa-4" rounded="xl">
-                    <div class="route-flow-editor__panel-eyebrow">Node basics</div>
+            <v-btn-toggle
+              v-if="selectedCanvasNode"
+              v-model="focusEditorTab"
+              class="route-flow-editor__preview-toggle mt-3"
+              color="primary"
+              mandatory
+              variant="outlined"
+            >
+              <v-btn value="parameters">Parameters</v-btn>
+              <v-btn value="settings">Settings</v-btn>
+            </v-btn-toggle>
 
-                    <div class="d-flex flex-wrap ga-2 mt-3">
-                      <v-chip :color="selectedFlowNodePreset?.color" label size="small" variant="tonal">
-                        {{ selectedFlowNodePreset?.title }}
-                      </v-chip>
-                      <v-chip label size="small" variant="outlined">
-                        {{ selectedNodeConnectionSummary.incoming }} in / {{ selectedNodeConnectionSummary.outgoing }} out
-                      </v-chip>
-                    </div>
-
-                    <v-text-field
-                      class="mt-4"
-                      label="Node name"
-                      :model-value="selectedCanvasNode.label"
-                      @update:model-value="updateSelectedNodeName(String($event ?? ''))"
-                    />
-                    <v-text-field
-                      label="Node id"
-                      :model-value="selectedCanvasNode.id"
-                      readonly
-                    />
-
-                    <div class="text-body-2 text-medium-emphasis mt-2">
-                      {{ selectedFlowNodePreset?.description }}
-                    </div>
-                  </v-sheet>
-                </v-col>
-
-                <v-col cols="12" md="7">
+            <div v-if="selectedCanvasNode" class="route-flow-editor__detail-body d-flex flex-column ga-4 mt-4" @wheel.stop>
+              <v-row v-if="focusEditorTab === 'parameters'" class="route-flow-editor__editor-grid">
+                <v-col cols="12">
                   <div class="d-flex flex-column ga-4">
-                    <v-sheet v-if="selectedNodeInspection" class="route-flow-editor__subpanel pa-4" rounded="xl">
-                      <div class="route-flow-editor__panel-eyebrow">Flow sample</div>
-                      <div class="text-body-2 text-medium-emphasis mt-2">
-                        Generated locally from the current route contract plus saved Flow refs. Connector nodes show placeholder
-                        payloads until a live execution exists.
-                      </div>
-
-                      <div class="d-flex flex-wrap ga-2 mt-3">
-                        <v-chip color="secondary" label size="small" variant="tonal">
-                          Input: {{ selectedNodeInspection.inputShape }}
-                        </v-chip>
-                        <v-chip color="primary" label size="small" variant="tonal">
-                          Output: {{ selectedNodeInspection.outputShape }}
-                        </v-chip>
-                      </div>
-
-                      <v-alert
-                        class="mt-3"
-                        border="start"
-                        :color="selectedNodeInspection.boundaryTone"
-                        density="comfortable"
-                        variant="tonal"
-                      >
-                        {{ selectedNodeInspection.boundaryMessage }}
-                      </v-alert>
-
-                      <v-alert
-                        v-if="selectedNodeInspection.unresolvedRefs.length > 0"
-                        class="mt-3"
-                        border="start"
-                        color="warning"
-                        density="comfortable"
-                        variant="tonal"
-                      >
-                        Some refs do not resolve in the current sample context yet:
-                        {{ selectedNodeInspection.unresolvedRefs.join(", ") }}
-                      </v-alert>
-
-                      <div class="route-flow-editor__sample-section mt-4">
-                        <div class="text-overline text-medium-emphasis">Data in scope</div>
-                        <div class="text-body-2 text-medium-emphasis">
-                          These are the request-contract inputs and upstream runtime-state samples this node can currently read from.
-                        </div>
-
-                        <div class="d-flex flex-column ga-3 mt-3">
-                          <div
-                            v-for="entry in selectedNodeInspection.scopeEntries"
-                            :key="entry.refPath"
-                            class="route-flow-editor__sample-entry"
-                          >
-                            <div class="d-flex align-start justify-space-between ga-3">
-                              <div>
-                                <div class="text-body-2 font-weight-medium">{{ entry.label }}</div>
-                                <div class="text-caption text-medium-emphasis">{{ entry.refPath }}</div>
-                              </div>
-                              <v-chip label size="x-small" variant="outlined">
-                                {{ entry.shape }}
-                              </v-chip>
-                            </div>
-
-                            <pre class="route-flow-editor__json-preview route-flow-editor__json-preview--sample mt-2">{{ entry.json }}</pre>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div class="route-flow-editor__sample-section mt-4">
-                        <div class="text-overline text-medium-emphasis">{{ selectedNodeInspection.outputTitle }}</div>
-                        <pre class="route-flow-editor__json-preview route-flow-editor__json-preview--sample mt-2">{{ selectedNodeInspection.outputJson }}</pre>
-                      </div>
-
-                      <div v-if="selectedNodeInspection.responseComparison" class="route-flow-editor__sample-section mt-4">
-                        <div class="text-overline text-medium-emphasis">Contract preview sample</div>
-                        <div class="text-body-2 text-medium-emphasis">
-                          The Test tab preview still comes from <code>response_schema</code>, not from the live Flow graph.
-                        </div>
-                        <pre class="route-flow-editor__json-preview route-flow-editor__json-preview--sample mt-2">{{ selectedNodeInspection.responseComparison.contractJson ?? "null" }}</pre>
-                      </div>
-
-                      <div v-if="selectedNodeInspection.notes.length > 0" class="route-flow-editor__sample-section mt-4">
-                        <div class="text-overline text-medium-emphasis">Inspector notes</div>
-                        <ul class="route-flow-editor__message-list mt-2">
-                          <li v-for="note in selectedNodeInspection.notes" :key="note">{{ note }}</li>
-                        </ul>
-                      </div>
-                    </v-sheet>
-
-                    <v-sheet v-else-if="selectedCanvasNode && !selectedNodeOnSamplePath" class="route-flow-editor__subpanel pa-4" rounded="xl">
-                      <div class="route-flow-editor__panel-eyebrow">Flow sample</div>
-                      <v-alert class="mt-3" border="start" color="info" variant="tonal">
-                        The current generated request sample does not traverse this node. Flow samples follow the executable branch
-                        path from <strong>API Trigger</strong>, so sibling-branch state is intentionally excluded here.
-                      </v-alert>
-                    </v-sheet>
-
                     <v-sheet class="route-flow-editor__subpanel pa-4" rounded="xl">
                       <div class="route-flow-editor__panel-eyebrow">Runtime behavior</div>
 
@@ -2541,34 +2959,48 @@ onBeforeUnmount(() => {
                       </template>
 
                       <template v-else-if="selectedCanvasNode.data.runtimeType === 'http_request'">
-                        <v-alert class="mt-3" border="start" color="info" variant="tonal">
-                          HTTP Request calls an upstream URL through a saved shared connection. Path fields support inline tokens
-                          like <code v-pre>{{request.path.deviceId}}</code>.
-                        </v-alert>
-
                         <v-select
                           v-model="selectedNodeConnectionId"
-                          class="mt-4"
+                          class="mt-3"
                           :items="httpConnectionOptions"
                           clearable
                           label="HTTP connection"
                         />
-                        <v-select
-                          v-model="selectedNodeHttpMethod"
-                          :items="HTTP_METHOD_OPTIONS"
-                          label="Method"
-                        />
-                        <v-text-field
-                          hint="Use a relative path such as /devices/{{request.path.deviceId}} or a full absolute URL."
-                          label="Path or URL template"
-                          persistent-hint
-                          :model-value="httpPathText"
-                          @update:model-value="handleHttpPathInput(String($event ?? ''))"
-                        />
-                        <v-text-field
-                          v-model="selectedNodeTimeoutMs"
-                          label="Timeout (ms)"
-                        />
+
+                        <div
+                          :ref="(element) => setTextEditorRootElement('httpPath', element)"
+                          v-pragmatic-drop-target="textReferenceDropBindings.httpPath"
+                          class="route-flow-editor__text-drop-target mt-3"
+                          @focusin.capture="rememberTextEditorSelection('httpPath', $event)"
+                          @keyup.capture="rememberTextEditorSelection('httpPath', $event)"
+                          @mouseup.capture="rememberTextEditorSelection('httpPath', $event)"
+                          @select.capture="rememberTextEditorSelection('httpPath', $event)"
+                        >
+                          <v-text-field
+                            hint="Use a relative path such as /devices/{{request.path.deviceId}}, drag in ref pills, or enter a full absolute URL."
+                            label="Path or URL template"
+                            persistent-hint
+                            :model-value="httpPathText"
+                            @update:model-value="handleHttpPathInput(String($event ?? ''))"
+                          />
+                        </div>
+
+                        <v-row class="mt-1">
+                          <v-col cols="12" md="6">
+                            <v-select
+                              v-model="selectedNodeHttpMethod"
+                              :items="HTTP_METHOD_OPTIONS"
+                              label="Method"
+                            />
+                          </v-col>
+                          <v-col cols="12" md="6">
+                            <v-text-field
+                              v-model="selectedNodeTimeoutMs"
+                              label="Timeout (ms)"
+                            />
+                          </v-col>
+                        </v-row>
+
                         <div
                           :ref="(element) => setJsonEditorRootElement('httpQuery', element)"
                           v-pragmatic-drop-target="jsonReferenceDropBindings.httpQuery"
@@ -2632,6 +3064,11 @@ onBeforeUnmount(() => {
                             @update:model-value="handleHttpBodyInput(String($event ?? ''))"
                           />
                         </div>
+
+                        <v-alert class="mt-3" border="start" color="info" density="compact" variant="tonal">
+                          HTTP Request calls an upstream URL through a saved shared connection. Path templates accept inline refs
+                          like <code v-pre>{{request.path.deviceId}}</code>.
+                        </v-alert>
                       </template>
 
                       <template v-else-if="selectedCanvasNode.data.runtimeType === 'postgres_query'">
@@ -2770,10 +3207,78 @@ onBeforeUnmount(() => {
                           />
                         </div>
                       </template>
+
+                      <template v-if="selectedNodeInspection">
+                        <v-alert
+                          class="mt-3"
+                          border="start"
+                          :color="selectedNodeInspection.boundaryTone"
+                          density="comfortable"
+                          variant="tonal"
+                        >
+                          {{ selectedNodeInspection.boundaryMessage }}
+                        </v-alert>
+
+                        <v-alert
+                          v-if="selectedNodeInspection.unresolvedRefs.length > 0"
+                          class="mt-3"
+                          border="start"
+                          color="warning"
+                          density="comfortable"
+                          variant="tonal"
+                        >
+                          Some refs do not resolve in the current sample context yet:
+                          {{ selectedNodeInspection.unresolvedRefs.join(", ") }}
+                        </v-alert>
+
+                        <v-alert
+                          v-for="note in selectedNodeInspection.notes"
+                          :key="note"
+                          class="mt-3"
+                          border="start"
+                          color="info"
+                          density="comfortable"
+                          variant="tonal"
+                        >
+                          {{ note }}
+                        </v-alert>
+                      </template>
                     </v-sheet>
                   </div>
                 </v-col>
               </v-row>
+
+              <v-sheet
+                v-else
+                class="route-flow-editor__subpanel pa-4"
+                rounded="xl"
+              >
+                <div class="route-flow-editor__panel-eyebrow">Node settings</div>
+                <div class="d-flex flex-wrap ga-2 mt-3">
+                  <v-chip :color="selectedFlowNodePreset?.color" label size="small" variant="tonal">
+                    {{ selectedFlowNodePreset?.title }}
+                  </v-chip>
+                  <v-chip label size="small" variant="outlined">
+                    {{ selectedNodeConnectionSummary.incoming }} in / {{ selectedNodeConnectionSummary.outgoing }} out
+                  </v-chip>
+                </div>
+
+                <v-text-field
+                  class="mt-4"
+                  label="Node name"
+                  :model-value="selectedCanvasNode.label"
+                  @update:model-value="updateSelectedNodeName(String($event ?? ''))"
+                />
+                <v-text-field
+                  label="Node id"
+                  :model-value="selectedCanvasNode.id"
+                  readonly
+                />
+
+                <div class="text-body-2 text-medium-emphasis mt-2">
+                  {{ selectedFlowNodePreset?.description }}
+                </div>
+              </v-sheet>
             </div>
 
             <div v-else class="route-flow-editor__empty-state mt-4">
@@ -2783,100 +3288,184 @@ onBeforeUnmount(() => {
           </v-sheet>
         </v-col>
 
-        <v-col v-if="!isFocusMode" cols="12" xl="4">
-          <div class="d-flex flex-column ga-4">
-            <v-sheet class="route-flow-editor__side-panel pa-4" rounded="xl">
-              <div class="route-flow-editor__panel-eyebrow">Flow signals</div>
-
-              <v-alert
-                v-if="errorMessage"
-                class="mt-3"
-                border="start"
-                color="error"
-                variant="tonal"
-              >
-                {{ errorMessage }}
-              </v-alert>
-
-              <v-alert
-                v-if="flowResponseComparison?.matchesContract === false"
-                class="mt-3"
-                border="start"
-                color="warning"
-                variant="tonal"
-              >
-                Current <strong>Set Response</strong> sample differs from <code>response_schema</code>. The Test preview and
-                the deployed live response will not match until you align them.
-              </v-alert>
-
-              <v-alert
-                v-if="allValidationMessages.length > 0"
-                class="mt-3"
-                border="start"
-                color="warning"
-                variant="tonal"
-              >
-                <div class="font-weight-medium mb-2">Fix these flow issues before saving</div>
-                <ul class="route-flow-editor__message-list">
-                  <li v-for="message in allValidationMessages" :key="message">{{ message }}</li>
-                </ul>
-              </v-alert>
-
-              <v-alert
-                v-else
-                class="mt-3"
-                border="start"
-                color="success"
-                variant="tonal"
-              >
-                The current live flow is structurally valid for this runtime slice.
-              </v-alert>
-            </v-sheet>
-
-            <v-sheet class="route-flow-editor__side-panel pa-4" rounded="xl">
-              <div class="route-flow-editor__panel-eyebrow mb-3">Route paths</div>
-
-              <div v-if="connectionSummaries.length === 0" class="text-body-2 text-medium-emphasis">
-                No paths yet. Select a node, then click or drag a palette node to append it, or draw directly between the
-                visible canvas ports.
-              </div>
-
-              <div v-else class="d-flex flex-column ga-2">
-                <div
-                  v-for="connection in connectionSummaries"
-                  :key="connection.id"
-                  class="route-flow-editor__connection-row"
-                >
-                  <div class="text-body-2">
-                    <strong>{{ connection.source }}</strong>
-                    <span v-if="connection.label" class="text-medium-emphasis"> via {{ connection.label }}</span>
-                    <span class="text-medium-emphasis"> to </span>
-                    <strong>{{ connection.target }}</strong>
-                  </div>
-                  <v-btn
-                    color="error"
-                    icon="mdi-close"
-                    size="x-small"
-                    variant="text"
-                    @click="removeConnection(connection.id)"
-                  />
+        <v-col
+          v-if="selectedCanvasNode"
+          class="route-flow-editor__focus-side-column route-flow-editor__focus-side-column--right"
+          cols="12"
+          md="3"
+        >
+          <v-sheet class="route-flow-editor__detail-panel route-flow-editor__detail-panel--preview pa-4" rounded="xl">
+            <div class="route-flow-editor__detail-head route-flow-editor__detail-head--stacked">
+              <div>
+                <div class="route-flow-editor__panel-eyebrow">Output payload</div>
+                <div class="route-flow-editor__detail-title route-flow-editor__detail-title--sm">
+                  {{ selectedNodeInspection?.outputTitle ?? "Node output" }}
                 </div>
               </div>
-            </v-sheet>
+              <v-chip
+                v-if="selectedNodeInspection"
+                color="primary"
+                label
+                size="small"
+                variant="tonal"
+              >
+                {{ selectedNodeInspection.outputShape }}
+              </v-chip>
+            </div>
 
-            <v-expansion-panels
-              v-model="isDesignerJsonOpen"
-              class="route-flow-editor__json-panel"
-              variant="accordion"
+            <v-btn-toggle
+              v-model="focusOutputPreviewMode"
+              class="route-flow-editor__preview-toggle mt-3"
+              color="primary"
+              mandatory
+              variant="outlined"
             >
-              <v-expansion-panel :value="0" elevation="0">
-                <v-expansion-panel-title>Designer JSON</v-expansion-panel-title>
-                <v-expansion-panel-text>
-                  <pre class="route-flow-editor__json-preview">{{ flowDefinitionPreview }}</pre>
-                </v-expansion-panel-text>
-              </v-expansion-panel>
-            </v-expansion-panels>
-          </div>
+              <v-btn value="schema">Schema</v-btn>
+              <v-btn value="table">Table</v-btn>
+              <v-btn value="json">JSON</v-btn>
+            </v-btn-toggle>
+
+            <div v-if="selectedNodeInspection" class="route-flow-editor__preview-scroll mt-3" @wheel.stop>
+              <template v-if="focusOutputPreviewMode === 'schema'">
+                <div class="route-flow-editor__sample-entry">
+                  <div class="text-body-2 font-weight-medium">{{ selectedNodeInspection.outputTitle }}</div>
+                  <div class="text-caption text-medium-emphasis">Live flow output shape</div>
+                  <pre class="route-flow-editor__json-preview route-flow-editor__json-preview--sample mt-2">{{ selectedNodeInspection.outputJson }}</pre>
+                </div>
+
+                <div v-if="selectedNodeInspection.responseComparison" class="route-flow-editor__sample-entry mt-3">
+                  <div class="text-body-2 font-weight-medium">Contract preview sample</div>
+                  <div class="text-caption text-medium-emphasis">
+                    Test preview still comes from <code>response_schema</code>.
+                  </div>
+                  <pre class="route-flow-editor__json-preview route-flow-editor__json-preview--sample mt-2">{{ selectedNodeInspection.responseComparison.contractJson ?? "null" }}</pre>
+                </div>
+              </template>
+
+              <template v-else-if="focusOutputPreviewMode === 'table'">
+                <v-table density="compact" hover>
+                  <thead>
+                    <tr>
+                      <th class="text-left">Path</th>
+                      <th class="text-left">Type</th>
+                      <th class="text-left">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in focusOutputPreviewTableRows" :key="`${row.source}:${row.path}`">
+                      <td class="text-caption">{{ row.path }}</td>
+                      <td class="text-caption">{{ row.type }}</td>
+                      <td class="text-caption route-flow-editor__table-value">{{ row.value }}</td>
+                    </tr>
+                  </tbody>
+                </v-table>
+              </template>
+
+              <template v-else>
+                <pre class="route-flow-editor__json-preview route-flow-editor__json-preview--sample">{{ selectedNodeInspection.outputJson }}</pre>
+              </template>
+            </div>
+          </v-sheet>
+        </v-col>
+      </v-row>
+
+      <v-row v-if="!isFocusMode" class="mt-4 route-flow-editor__support-grid">
+        <v-col cols="12" lg="5">
+          <v-sheet class="route-flow-editor__side-panel pa-4" rounded="xl">
+            <div class="route-flow-editor__panel-eyebrow">Flow signals</div>
+
+            <v-alert
+              v-if="errorMessage"
+              class="mt-3"
+              border="start"
+              color="error"
+              variant="tonal"
+            >
+              {{ errorMessage }}
+            </v-alert>
+
+            <v-alert
+              v-if="flowResponseComparison?.matchesContract === false"
+              class="mt-3"
+              border="start"
+              color="warning"
+              variant="tonal"
+            >
+              Current <strong>Set Response</strong> sample differs from <code>response_schema</code>. The Test preview and
+              the deployed live response will not match until you align them.
+            </v-alert>
+
+            <v-alert
+              v-if="allValidationMessages.length > 0"
+              class="mt-3"
+              border="start"
+              color="warning"
+              variant="tonal"
+            >
+              <div class="font-weight-medium mb-2">Fix these flow issues before saving</div>
+              <ul class="route-flow-editor__message-list">
+                <li v-for="message in allValidationMessages" :key="message">{{ message }}</li>
+              </ul>
+            </v-alert>
+
+            <v-alert
+              v-else
+              class="mt-3"
+              border="start"
+              color="success"
+              variant="tonal"
+            >
+              The current live flow is structurally valid for this runtime slice.
+            </v-alert>
+          </v-sheet>
+        </v-col>
+
+        <v-col cols="12" lg="7">
+          <v-sheet class="route-flow-editor__side-panel pa-4" rounded="xl">
+            <div class="route-flow-editor__panel-eyebrow mb-3">Route paths</div>
+
+            <div v-if="connectionSummaries.length === 0" class="text-body-2 text-medium-emphasis">
+              No paths yet. Select a node, then click or drag a palette node to append it, or draw directly between the
+              visible canvas ports.
+            </div>
+
+            <div v-else class="d-flex flex-column ga-2">
+              <div
+                v-for="connection in connectionSummaries"
+                :key="connection.id"
+                class="route-flow-editor__connection-row"
+              >
+                <div class="text-body-2">
+                  <strong>{{ connection.source }}</strong>
+                  <span v-if="connection.label" class="text-medium-emphasis"> via {{ connection.label }}</span>
+                  <span class="text-medium-emphasis"> to </span>
+                  <strong>{{ connection.target }}</strong>
+                </div>
+                <v-btn
+                  color="error"
+                  icon="mdi-close"
+                  size="x-small"
+                  variant="text"
+                  @click="removeConnection(connection.id)"
+                />
+              </div>
+            </div>
+          </v-sheet>
+        </v-col>
+
+        <v-col cols="12">
+          <v-expansion-panels
+            v-model="isDesignerJsonOpen"
+            class="route-flow-editor__json-panel"
+            variant="accordion"
+          >
+            <v-expansion-panel :value="0" elevation="0">
+              <v-expansion-panel-title>Designer JSON</v-expansion-panel-title>
+              <v-expansion-panel-text>
+                <pre class="route-flow-editor__json-preview">{{ flowDefinitionPreview }}</pre>
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+          </v-expansion-panels>
         </v-col>
       </v-row>
     </div>
@@ -3197,27 +3786,75 @@ onBeforeUnmount(() => {
 
 .route-flow-editor__detail-grid--focus {
   position: absolute;
-  top: 4.8rem;
+  top: auto;
   right: 0.75rem;
   bottom: 0.75rem;
-  left: auto !important;
-  width: 20.75rem !important;
+  left: 0.75rem !important;
+  width: auto !important;
+  height: min(52vh, 35rem);
   margin: 0 !important;
-  display: block !important;
+  display: grid !important;
+  grid-template-columns: minmax(16rem, 0.95fr) minmax(0, 1.4fr) minmax(16rem, 0.95fr);
+  gap: 0.7rem;
   z-index: 4;
   pointer-events: none;
 }
 
+.route-flow-editor__detail-grid--focus > .v-col {
+  pointer-events: auto;
+  padding: 0;
+  min-height: 0;
+}
+
 .route-flow-editor__detail-grid--focus .route-flow-editor__inspector-column {
   height: 100%;
-  padding: 0;
-  width: 100%;
-  max-width: 100%;
-  flex: 0 0 100%;
+  min-width: 0;
+  max-width: none;
 }
 
 .route-flow-editor__detail-grid--focus .route-flow-editor__inspector-column > * {
   pointer-events: auto;
+}
+
+.route-flow-editor__focus-side-column {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  max-width: none;
+}
+
+.route-flow-editor__detail-head--stacked {
+  align-items: flex-start;
+}
+
+.route-flow-editor__detail-title--sm {
+  font-size: 0.98rem;
+}
+
+.route-flow-editor__detail-panel--preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.route-flow-editor__preview-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.15rem;
+  scrollbar-gutter: stable;
+}
+
+.route-flow-editor__preview-toggle {
+  display: inline-flex;
+}
+
+.route-flow-editor__table-value {
+  max-width: 16rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .route-flow-editor__detail-head {
@@ -3238,12 +3875,24 @@ onBeforeUnmount(() => {
 
 .route-flow-editor--focus .route-flow-editor__detail-panel {
   height: 100%;
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   border-radius: 20px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 100%),
     rgba(20, 29, 44, 0.94);
   backdrop-filter: blur(14px) saturate(125%);
+}
+
+.route-flow-editor--focus .route-flow-editor__detail-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.15rem;
+  scrollbar-gutter: stable;
 }
 
 .route-flow-editor--focus .route-flow-editor__subpanel {
@@ -3303,6 +3952,43 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, rgb(var(--v-theme-surface)) 94%, rgb(var(--v-theme-background)) 6%);
 }
 
+.route-flow-editor__support-grid {
+  align-items: start;
+}
+
+.route-flow-editor__schema-section {
+  padding: 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 18px;
+  background: color-mix(in srgb, rgb(var(--v-theme-surface)) 94%, rgb(var(--v-theme-background)) 6%);
+}
+
+.route-flow-editor__schema-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.route-flow-editor__schema-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  padding-left: calc(var(--schema-depth, 0) * 0.9rem);
+}
+
+.route-flow-editor__schema-pill {
+  flex: 0 0 auto;
+  text-transform: none;
+}
+
+.route-flow-editor__schema-row-preview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .route-flow-editor__json-preview {
   overflow-x: auto;
   margin: 0;
@@ -3343,7 +4029,10 @@ onBeforeUnmount(() => {
   }
 
   .route-flow-editor__detail-grid--focus {
-    width: 19rem;
+    left: 0.55rem !important;
+    right: 0.55rem;
+    height: min(58vh, 34rem);
+    grid-template-columns: minmax(13rem, 0.85fr) minmax(0, 1.35fr) minmax(13rem, 0.85fr);
   }
 }
 
@@ -3389,8 +4078,16 @@ onBeforeUnmount(() => {
     left: 0.5rem;
     right: 0.5rem;
     bottom: 0.5rem;
-    width: auto;
-    height: min(56vh, 34rem);
+    width: auto !important;
+    height: min(64vh, 33rem);
+    display: grid !important;
+    grid-template-columns: 1fr;
+  }
+
+  .route-flow-editor__focus-side-column,
+  .route-flow-editor__detail-grid--focus .route-flow-editor__inspector-column {
+    max-width: 100%;
+    margin-bottom: 0.6rem;
   }
 
   :deep(.route-flow-editor__minimap) {
