@@ -93,6 +93,7 @@ Fields:
 
 Operational notes:
 - The current admin telemetry overview derives recent route latency from these timestamps before any dedicated time-series store exists.
+- Persisted `request_data` / `response_body` values are normalized to JSON-safe payloads before storage. Connector-returned `datetime` / `date` / `time` values are stored as ISO strings in the trace record.
 
 ## ExecutionStep
 Represents a per-node trace record for one `ExecutionRun`.
@@ -107,6 +108,7 @@ Fields:
 
 Operational notes:
 - Step timestamps are now recorded per executed node so the admin browse dashboard can highlight slow flow hotspots. Older traces with coarse run-level timings may still exist and should be treated as partial telemetry during aggregation.
+- Persisted `input_data` / `output_data` payloads use the same JSON-safe normalization path as `ExecutionRun`, so connector-returned temporal values are recorded as ISO strings instead of failing JSON-column writes.
 
 ## Preview/examples generation
 The system still generates preview/example responses directly from `response_schema`.

@@ -16,6 +16,7 @@ The current milestone is the **first branch-aware live-flow slice**:
 - backend runtime scaffolding is in place
 - admin workflow tabs are in place
 - the route `Test` workspace and dedicated route tester now separate admin contract preview from live/public request execution, with explicit draft/live state summaries
+- the route tester's `Request preview` now derives its request-body sample from the saved request contract instead of merely echoing the shared test textarea state
 - request/response schema authoring now lives directly in the route `Contract` tab, and legacy schema-editor deep links redirect into that in-workspace journey
 - the route `Test` workspace now also supports lazy-loaded execution drill-down plus a replay handoff into the dedicated tester using captured path/query trace data
 - the route browse dashboard now also surfaces basic live telemetry from runtime history, including average/p95 latency plus slow-route and slow-flow hotspot summaries
@@ -40,7 +41,7 @@ The current milestone is the **first branch-aware live-flow slice**:
   - Baseline browser hardening headers now ship from the FastAPI layer, while the admin frontend mirrors them in both Vite dev and the runtime Nginx image.
   - **OpenAPI generation** is performed at runtime from the same shared public-route selector used by the status/reference feed.
   - **Preview/examples generation** still supports fixed, true-random, and mocking-random response values from `response_schema`, explicit semantic value types for context-aware data like IDs, names, emails, prices, and long-form text fields, request-aware string templating through `x-mock.template`, and a deliberately snarkier Artificer voice in `mocking` mode.
-  - The live runtime path now includes route implementations, environment deployments, execution traces, a compiled in-memory matcher cache keyed by method/path specificity, first-class `if_condition` / `switch` branch routing, first-class `http_request` / `postgres_query` connector execution, and per-node step timings that can feed the first telemetry summaries without a separate metrics store yet.
+  - The live runtime path now includes route implementations, environment deployments, execution traces, a compiled in-memory matcher cache keyed by method/path specificity, first-class `if_condition` / `switch` branch routing, first-class `http_request` / `postgres_query` connector execution, and per-node step timings that can feed the first telemetry summaries without a separate metrics store yet. Persisted trace payloads are normalized into JSON-safe values first, including ISO-string conversion for connector-returned `datetime` / `date` / `time` values.
   - During the transition, the public catchall still falls back to the legacy mock generator for routes that have not yet entered the live-runtime lifecycle; once a route has a saved implementation/deployment record, it is public only through an active deployment.
 
 - **Frontend (`apps/admin-web/`)**

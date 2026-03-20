@@ -1777,6 +1777,7 @@ def test_runtime_postgres_query_connector_executes_and_records_steps(empty_db, m
     client = TestClient(app)
     headers = _login_headers(client)
     called: dict[str, object] = {}
+    shipped_at = datetime(2026, 3, 20, 17, 45, tzinfo=timezone.utc)
 
     def fake_postgres_query(*, connection_config, sql, parameters):
         called["connection_config"] = dict(connection_config)
@@ -1786,6 +1787,7 @@ def test_runtime_postgres_query_connector_executes_and_records_steps(empty_db, m
             {
                 "order_id": parameters["order_id"],
                 "status": "shipped",
+                "shipped_at": shipped_at,
             }
         ]
 
@@ -1870,6 +1872,7 @@ def test_runtime_postgres_query_connector_executes_and_records_steps(empty_db, m
             {
                 "order_id": "ord_123",
                 "status": "shipped",
+                "shipped_at": str(shipped_at),
             }
         ],
     }
@@ -1887,7 +1890,9 @@ def test_runtime_postgres_query_connector_executes_and_records_steps(empty_db, m
         headers=headers,
     )
     assert executions_response.status_code == 200
-    execution_id = executions_response.json()[0]["id"]
+    execution_summary = executions_response.json()[0]
+    execution_id = execution_summary["id"]
+    assert execution_summary["response_body"]["rows"][0]["shipped_at"] == shipped_at.isoformat()
 
     execution_detail_response = client.get(
         f"/api/admin/executions/{execution_id}",
@@ -1907,8 +1912,11 @@ def test_runtime_postgres_query_connector_executes_and_records_steps(empty_db, m
         {
             "order_id": "ord_123",
             "status": "shipped",
+            "shipped_at": shipped_at.isoformat(),
         }
     ]
+    response_step = execution_detail["steps"][2]
+    assert response_step["output_data"]["body"]["rows"][0]["shipped_at"] == shipped_at.isoformat()
 
 
 def test_runtime_http_request_connector_failures_return_error_runs(empty_db, monkeypatch):

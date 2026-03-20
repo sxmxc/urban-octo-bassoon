@@ -253,9 +253,12 @@ describe("EndpointPreviewView", () => {
       expect.objectContaining({ token: "session-token" }),
       {
         queryParameters: { status: "" },
-        requestBody: {},
+        requestBody: { value: 1 },
       },
     );
+
+    const requestBodyField = screen.getByLabelText("Request body") as HTMLTextAreaElement;
+    expect(JSON.parse(requestBodyField.value)).toEqual({ value: 1 });
 
     await fireEvent.update(screen.getByLabelText("Path parameter: orderId"), "ord-123");
     await fireEvent.update(screen.getByLabelText("Query parameter: status"), "queued");
@@ -417,7 +420,33 @@ describe("EndpointPreviewView", () => {
       expect.objectContaining({ token: "session-token" }),
       {
         queryParameters: { status: "queued" },
-        requestBody: {},
+        requestBody: { value: 1 },
+      },
+    );
+  });
+
+  it("leaves the request body input blank when a body route has no saved request-body contract", async () => {
+    vi.mocked(getEndpoint).mockResolvedValue(
+      createEndpoint({
+        request_schema: null,
+      }),
+    );
+
+    await renderView();
+    await flushPromises();
+
+    const requestBodyField = screen.getByLabelText("Request body") as HTMLTextAreaElement;
+    expect(requestBodyField.value).toBe("");
+    expect(vi.mocked(previewResponse)).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: "object",
+      }),
+      "seed-1",
+      { orderId: "sample-orderId" },
+      expect.objectContaining({ token: "session-token" }),
+      {
+        queryParameters: {},
+        requestBody: null,
       },
     );
   });

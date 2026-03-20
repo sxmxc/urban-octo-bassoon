@@ -13,11 +13,13 @@ import type { Endpoint, JsonValue, RouteDeployment, RouteImplementation } from "
 import { buildRouteTestState } from "../utils/routeTestState";
 import {
   buildDefaultParameterValue,
+  extractRequestBodySchema,
   extractRequestParameterDefinitions,
   syncPathParameterDefinitions,
   type RequestParameterDefinition,
 } from "../utils/requestSchema";
 import { buildDefaultPathParameters, resolvePathParameters } from "../utils/pathParameters";
+import { buildSampleRequestBody } from "../utils/responseTemplates";
 
 const route = useRoute();
 const router = useRouter();
@@ -61,6 +63,10 @@ const pathParameterDefinitions = computed<RequestParameterDefinition[]>(() =>
 const queryParameterDefinitions = computed<RequestParameterDefinition[]>(() =>
   endpoint.value ? extractRequestParameterDefinitions(endpoint.value.request_schema ?? {}, "query") : [],
 );
+const requestBodySchema = computed(() =>
+  endpoint.value ? extractRequestBodySchema(endpoint.value.request_schema ?? {}) : {},
+);
+const contractRequestBodySample = computed<JsonValue | null>(() => buildSampleRequestBody(requestBodySchema.value));
 const canWriteRoutes = computed(() => auth.canWriteRoutes.value && !auth.mustChangePassword.value);
 const routeTestState = computed(() =>
   endpoint.value ? buildRouteTestState(endpoint.value, currentImplementation.value, deployments.value) : null,
@@ -88,15 +94,18 @@ const contractRequestPreviewText = computed(() => {
   }
 
   if (!["GET", "DELETE"].includes(endpoint.value.method)) {
+    previewPayload.request_body = contractRequestBodySample.value;
+
     const trimmedBody = requestBody.value.trim();
-    if (!trimmedBody) {
-      previewPayload.request_body = null;
-    } else {
+    if (trimmedBody) {
       try {
-        previewPayload.request_body = JSON.parse(trimmedBody) as JsonValue;
+        const parsedBody = JSON.parse(trimmedBody) as JsonValue;
+        if (JSON.stringify(parsedBody) !== JSON.stringify(contractRequestBodySample.value)) {
+          previewPayload.live_request_body_input = parsedBody;
+        }
       } catch {
-        previewPayload.request_body_raw = requestBody.value;
-        previewPayload.request_body_error = "Request body must be valid JSON.";
+        previewPayload.live_request_body_raw = requestBody.value;
+        previewPayload.live_request_body_error = "Request body must be valid JSON.";
       }
     }
   }
@@ -223,7 +232,12 @@ async function loadEndpoint(): Promise<void> {
       });
     }
 
-    requestBody.value = "{}";
+    if (["GET", "DELETE"].includes(loadedEndpoint.method)) {
+      requestBody.value = "{}";
+    } else {
+      const requestBodySample = buildSampleRequestBody(extractRequestBodySchema(loadedEndpoint.request_schema ?? {}));
+      requestBody.value = requestBodySample === null ? "" : prettyJson(requestBodySample);
+    }
     previewResult.value = null;
     samplePreview.value = null;
 
@@ -612,7 +626,7 @@ async function runLiveRequest(): Promise<void> {
               <v-card-subtitle>
                 {{
                   contractPreviewTab === "request"
-                    ? "Derived from the shared preview inputs so you can inspect the request shape before running live traffic."
+                    ? "Generated from the saved request contract. Current shared body input is shown only when it differs from the contract sample."
                     : "Generated from the saved response schema plus the shared preview inputs. This stays inside the admin preview engine."
                 }}
               </v-card-subtitle>
