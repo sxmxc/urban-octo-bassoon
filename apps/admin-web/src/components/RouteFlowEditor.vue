@@ -3893,7 +3893,8 @@ onBeforeUnmount(() => {
   display: grid !important;
   grid-template-columns: minmax(16rem, 0.95fr) minmax(0, 1.4fr) minmax(16rem, 0.95fr);
   gap: 0.7rem;
-  z-index: 4;
+  /* Keep the focus workbench above canvas hit-targets so inspector controls stay reliably clickable. */
+  z-index: 3400;
   pointer-events: none;
 }
 

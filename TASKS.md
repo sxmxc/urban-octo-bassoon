@@ -4,7 +4,6 @@ This file tracks the work needed to bootstrap and evolve the project.
 Read `docs/roadmap.md` alongside this file if you are picking up the next implementation slice.
 
 ## Now
-- [ ] Fix the remaining full-screen `Flow` inspector pointer-layering bug so dropdowns, connection selectors, and `Remove path` are reliably mouse-usable in focus mode
 - [ ] Improve `Flow` authoring ergonomics for large-context nodes and branch editing by reducing inspector vertical sprawl and making reconnect/remove-path flows more intuitive
 - [ ] Make the tester `Request preview` reflect the saved request contract/schema, including an accurate request-body preview, instead of primarily echoing shared test inputs
 
@@ -22,6 +21,7 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [ ] (none)
 
 ## Done
+- [x] Fix the remaining full-screen `Flow` inspector pointer-layering bug so dropdowns, connection selectors, and `Remove path` are reliably mouse-usable in focus mode
 - [x] Centralize manual version bumps around a repo-root `VERSION` file with sync/check tooling, Make targets, and CI/tag drift guards
 - [x] Warn before leaving the route `Flow` editor for same-route preview/test navigation and stop historical route implementations from blocking connector deletion
 - [x] Add basic live telemetry metrics to the `/endpoints` browse dashboard using aggregated `ExecutionRun` / `ExecutionStep` history, including slow-route and slow-flow hotspot summaries
