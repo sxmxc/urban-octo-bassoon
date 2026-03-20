@@ -321,6 +321,49 @@ export interface ExecutionRunDetail extends ExecutionRun {
   steps: ExecutionStep[];
 }
 
+export interface ExecutionTelemetryRouteSummary {
+  route_id: number;
+  total_runs: number;
+  success_runs: number;
+  error_runs: number;
+  success_rate: number | null;
+  average_response_time_ms: number | null;
+  p95_response_time_ms: number | null;
+  max_response_time_ms: number | null;
+  average_flow_time_ms: number | null;
+  p95_flow_time_ms: number | null;
+  latest_completed_at: string | null;
+}
+
+export interface ExecutionTelemetryStepSummary {
+  route_id: number;
+  node_type: string;
+  total_steps: number;
+  average_duration_ms: number | null;
+  p95_duration_ms: number | null;
+  max_duration_ms: number | null;
+  latest_completed_at: string | null;
+}
+
+export interface ExecutionTelemetryOverview {
+  sample_limit: number;
+  sampled_runs: number;
+  sampled_steps: number;
+  route_count: number;
+  success_runs: number;
+  error_runs: number;
+  success_rate: number | null;
+  average_response_time_ms: number | null;
+  p95_response_time_ms: number | null;
+  average_flow_time_ms: number | null;
+  p95_flow_time_ms: number | null;
+  average_steps_per_run: number | null;
+  latest_completed_at: string | null;
+  precise_step_run_count: number;
+  slow_routes: ExecutionTelemetryRouteSummary[];
+  slow_flow_steps: ExecutionTelemetryStepSummary[];
+}
+
 export interface ExecutionRequestData {
   [key: string]: JsonValue | undefined;
   path_parameters?: Record<string, JsonValue>;

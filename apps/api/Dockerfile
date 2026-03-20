@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 FROM base AS runtime
 
-ARG APP_VERSION=1.4.0-alpha.0
+ARG APP_VERSION=2.0.0-alpha.1
 ENV APP_VERSION=${APP_VERSION}
 COPY . .
 

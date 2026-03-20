@@ -14,6 +14,8 @@ UI_TEST_ADMIN_DOCKER_ENV = \
 	$(call docker_optional_env,UI_TEST_ADMIN_AVATAR_URL) \
 	$(call docker_optional_env,UI_TEST_ADMIN_ROLE)
 
+VERSION_SCRIPT = python3 scripts/versioning.py
+
 help:
 	@echo "Available targets:"
 	@echo "  make up         # Start services (docker compose up)"
@@ -29,6 +31,11 @@ help:
 	@echo "  make lint       # Run linting (backend + frontend)"
 	@echo "  make seed       # Seed the database (run migrations + seed)"
 	@echo "  make ui-test-user  # Create or reset a dedicated local admin QA account"
+	@echo "  make version    # Print the canonical app version from VERSION"
+	@echo "  make version-check  # Fail if version consumers drift from VERSION"
+	@echo "  make version-sync   # Rewrite version consumers from VERSION"
+	@echo "  make set-version VERSION=X.Y.Z[-label.N]  # Set VERSION and sync all consumers"
+	@echo "  make bump-version PART=patch|minor|major|prerelease|release [PRE_LABEL=alpha]  # Compute and apply the next version"
 	@echo "  make clean      # Cleanup generated artifacts"
 
 up:
@@ -63,6 +70,23 @@ seed:
 
 ui-test-user:
 	docker compose run --rm $(UI_TEST_ADMIN_DOCKER_ENV) api python -m scripts.create_test_admin
+
+version:
+	@$(VERSION_SCRIPT) show
+
+version-check:
+	@$(VERSION_SCRIPT) check
+
+version-sync:
+	@$(VERSION_SCRIPT) sync
+
+set-version:
+	@test -n "$(VERSION)" || (echo "VERSION is required, for example: make set-version VERSION=2.0.0-alpha.2" >&2; exit 1)
+	@$(VERSION_SCRIPT) set "$(VERSION)"
+
+bump-version:
+	@test -n "$(PART)" || (echo "PART is required, for example: make bump-version PART=prerelease PRE_LABEL=alpha" >&2; exit 1)
+	@$(VERSION_SCRIPT) bump "$(PART)" $(if $(strip $(PRE_LABEL)),--pre-label "$(PRE_LABEL)",)
 
 test:
 	docker compose run --rm api pytest

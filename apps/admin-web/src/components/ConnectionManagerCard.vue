@@ -50,6 +50,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   create: [payload: ConnectionPayload];
   update: [connectionId: number, payload: ConnectionPayload];
+  delete: [connectionId: number];
   refresh: [];
 }>();
 
@@ -418,6 +419,16 @@ function toggleConnectionActive(connection: Connection): void {
     is_active: !connection.is_active,
   });
 }
+
+function requestDeleteConnection(connection: Connection): void {
+  const confirmed = window.confirm(
+    `Delete connection "${connection.name}" from scope ${connection.project}/${connection.environment}? This cannot be undone.`,
+  );
+  if (!confirmed) {
+    return;
+  }
+  emit("delete", connection.id);
+}
 </script>
 
 <template>
@@ -516,10 +527,10 @@ function toggleConnectionActive(connection: Connection): void {
           class="connection-manager__record pa-4"
           rounded="xl"
         >
-          <div class="d-flex flex-column flex-lg-row justify-space-between ga-4">
+          <div class="d-flex flex-column flex-lg-row justify-space-between ga-3">
             <div class="d-flex flex-column ga-2">
-              <div class="d-flex flex-wrap align-center ga-2">
-                <div class="text-subtitle-1 font-weight-medium">{{ connection.name }}</div>
+              <div class="d-flex flex-wrap align-center ga-2 connection-manager__record-head">
+                <div class="text-subtitle-1 font-weight-bold connection-manager__record-title">{{ connection.name }}</div>
                 <v-chip :color="connectorColor(connection.connector_type)" label size="small" variant="tonal">
                   {{ connection.connector_type === "http" ? "HTTP" : "Postgres" }}
                 </v-chip>
@@ -544,8 +555,8 @@ function toggleConnectionActive(connection: Connection): void {
                 </v-chip>
               </div>
 
-              <div class="text-body-2 text-medium-emphasis">{{ describeConnectionTarget(connection) }}</div>
-              <div v-if="connection.description" class="text-body-2">{{ connection.description }}</div>
+              <div class="text-body-2 connection-manager__record-target">{{ describeConnectionTarget(connection) }}</div>
+              <div v-if="connection.description" class="text-body-2 text-medium-emphasis">{{ connection.description }}</div>
               <div class="text-caption text-medium-emphasis">Updated {{ formatTimestamp(connection.updated_at) }}</div>
             </div>
 
@@ -566,6 +577,15 @@ function toggleConnectionActive(connection: Connection): void {
                 @click="toggleConnectionActive(connection)"
               >
                 {{ connection.is_active ? "Retire" : "Reactivate" }}
+              </v-btn>
+              <v-btn
+                color="error"
+                :disabled="isSaving"
+                prepend-icon="mdi-trash-can-outline"
+                variant="text"
+                @click="requestDeleteConnection(connection)"
+              >
+                Delete
               </v-btn>
             </div>
           </div>
@@ -779,14 +799,30 @@ function toggleConnectionActive(connection: Connection): void {
 .connection-manager__list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .connection-manager__record {
-  border: 1px solid rgba(99, 115, 129, 0.18);
+  border: 1px solid rgba(148, 163, 184, 0.2);
   background:
-    linear-gradient(135deg, rgba(9, 30, 66, 0.04), transparent 50%),
-    rgba(255, 255, 255, 0.78);
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.1), transparent 35%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 100%),
+    color-mix(in srgb, rgb(var(--v-theme-surface)) 94%, rgb(var(--v-theme-background)) 6%);
+  box-shadow:
+    0 10px 24px rgba(15, 23, 42, 0.18),
+    inset 0 0 0 1px rgba(148, 163, 184, 0.08);
+}
+
+.connection-manager__record-head {
+  margin-bottom: 0.15rem;
+}
+
+.connection-manager__record-title {
+  letter-spacing: 0.01em;
+}
+
+.connection-manager__record-target {
+  color: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 82%, transparent);
 }
 
 .connection-manager__json-input :deep(textarea) {

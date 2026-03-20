@@ -107,7 +107,7 @@ function numberPatch(field: keyof EndpointDraft, value: string | number | null):
               variant="tonal"
               @click="emit('openSchema')"
             >
-              Edit schema
+              Edit contract
             </v-btn>
             <v-btn
               v-if="!isCreating"
@@ -221,10 +221,14 @@ function numberPatch(field: keyof EndpointDraft, value: string | number | null):
               color="accent"
               hide-details
               inset
-              label="Serve this endpoint publicly"
+              label="Enable route"
               :model-value="draft.enabled"
               @update:model-value="patch({ enabled: Boolean($event) })"
             />
+            <div class="text-caption text-medium-emphasis mt-2">
+              Publishing happens in <strong>Deploy</strong>. This toggle only disables the route entirely, including
+              public docs and live traffic.
+            </div>
           </v-col>
         </v-row>
       </v-card-text>
@@ -232,8 +236,8 @@ function numberPatch(field: keyof EndpointDraft, value: string | number | null):
 
     <v-card class="workspace-card">
       <v-card-item>
-        <v-card-title>Runtime behavior</v-card-title>
-        <v-card-subtitle>Set auth, status, errors, latency, and sample seeding.</v-card-subtitle>
+        <v-card-title>Route defaults</v-card-title>
+        <v-card-subtitle>Set auth, contract response code, legacy mock behavior, and sample seeding.</v-card-subtitle>
       </v-card-item>
       <v-divider />
       <v-card-text>
@@ -249,17 +253,21 @@ function numberPatch(field: keyof EndpointDraft, value: string | number | null):
           <v-col cols="12" md="4">
             <v-text-field
               :error-messages="errors.success_status_code"
-              label="Success status"
+              label="Contract success status"
               min="100"
               :model-value="draft.success_status_code"
               type="number"
               @update:model-value="numberPatch('success_status_code', $event)"
             />
+            <div class="text-caption text-medium-emphasis mt-2">
+              OpenAPI and legacy mock previews use this code. Published live routes can still override it in
+              <strong>Flow</strong> via <strong>Set Response</strong>.
+            </div>
           </v-col>
           <v-col cols="12" md="4">
             <v-text-field
               :error-messages="errors.error_rate"
-              label="Error rate"
+              label="Legacy mock error rate"
               max="1"
               min="0"
               :model-value="draft.error_rate"
@@ -270,7 +278,7 @@ function numberPatch(field: keyof EndpointDraft, value: string | number | null):
           </v-col>
           <v-col cols="12" md="6">
             <v-text-field
-              label="Latency min (ms)"
+              label="Legacy mock latency min (ms)"
               min="0"
               :model-value="draft.latency_min_ms"
               type="number"
@@ -280,7 +288,7 @@ function numberPatch(field: keyof EndpointDraft, value: string | number | null):
           <v-col cols="12" md="6">
             <v-text-field
               :error-messages="errors.latency_max_ms"
-              label="Latency max (ms)"
+              label="Legacy mock latency max (ms)"
               min="0"
               :model-value="draft.latency_max_ms"
               type="number"
@@ -289,7 +297,7 @@ function numberPatch(field: keyof EndpointDraft, value: string | number | null):
           </v-col>
           <v-col cols="12">
             <v-text-field
-              label="Seed key"
+              label="Preview seed key"
               :model-value="draft.seed_key"
               placeholder="Leave empty for fresh random data each request"
               @update:model-value="patch({ seed_key: String($event ?? '') })"
@@ -352,7 +360,7 @@ function numberPatch(field: keyof EndpointDraft, value: string | number | null):
 
         <div v-else class="d-flex flex-wrap ga-3">
           <v-btn color="secondary" prepend-icon="mdi-shape-outline" variant="tonal" @click="emit('openSchema')">
-            Edit schema
+            Edit contract
           </v-btn>
           <v-btn prepend-icon="mdi-flask-outline" variant="text" @click="emit('preview')">
             Test route

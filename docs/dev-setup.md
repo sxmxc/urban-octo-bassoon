@@ -76,6 +76,15 @@ make clean-prod-local
 make test
 ```
 
+Version maintenance:
+
+```sh
+make version
+make version-check
+make set-version VERSION=2.0.0-alpha.2
+make bump-version PART=prerelease PRE_LABEL=alpha
+```
+
 Frontend checks:
 
 ```sh
@@ -125,6 +134,7 @@ Notes:
 - The API runtime image reads `APP_VERSION` so published OpenAPI metadata can match the release tag.
 - The admin runtime image serves the built SPA through Nginx and proxies `/api` to `API_UPSTREAM` (default `http://api:8000`).
 - The GitHub image workflow validates `runtime` builds on pull requests and publishes multi-arch images on `main` and `v*` tags.
+- The repo-level `VERSION` file is the source of truth for manual version bumps, and the image workflow verifies that release tags match it.
 
 ## Local development (backend only)
 

@@ -1,5 +1,25 @@
 # DECISIONS
 
+## 2026-03-20: Repo-root VERSION is the single manual version source of truth
+- **Canonical source**: Keep the checked-in repo root `VERSION` file as the manual source of truth for application releases instead of hand-editing version strings across frontend, backend, and Docker build files.
+- **Sync workflow**: Maintain a small repo-local `scripts/versioning.py` helper plus `make version`, `make version-check`, `make set-version`, and `make bump-version` targets to rewrite the downstream consumers in one pass.
+- **Release guardrails**: Fail CI when any consumer drifts from `VERSION`, and require `v...` release tags to match `VERSION` exactly before the image workflow publishes official tags.
+
+## 2026-03-20: Basic telemetry should come from runtime history before adding a time-series system
+- **Delivery slice**: Use aggregated `ExecutionRun` / `ExecutionStep` history for the first `/endpoints` browse-dashboard telemetry view instead of introducing a new metrics store immediately.
+- **Operator value**: Surface recent-run average/p95 response time, slow-route rankings, and slow flow-node hotspots so editors can find problematic live routes before a fuller observability stack exists.
+- **Timing integrity**: Persist node-level `ExecutionStep.started_at` / `completed_at` timestamps per executed node so flow hotspot telemetry is meaningful; tolerate older coarse-grained traces during aggregation and leave long-term time-series offload as a later architecture step.
+
+## 2026-03-20: Connector CRUD is centralized, and Flow keeps route-scoped context only
+- **Surface ownership**: Keep full connector credential CRUD on the dedicated top-level `Connectors` page, and stop embedding the full connection manager under the route `Flow` tab.
+- **Flow ergonomics**: Keep only compact connector scope awareness in `Flow` (scope/count/refresh plus a direct link to `Connectors`) while preserving node-level binding to saved connection ids in the inspector.
+- **Delete safety**: Support real connection deletion in the admin API, but block deletes when any saved route implementation still references that `connection_id`, returning a user-facing error that names affected routes.
+
+## 2026-03-20: Contract authoring lives inside the route workspace
+- **Workflow ownership**: Treat the route `Contract` tab as the primary request/response schema editing surface, and keep the old `/endpoints/:id/schema` path only as a compatibility redirect into that tab instead of maintaining a second standalone editor journey.
+- **Publication language**: In `Overview`, describe `enabled` as a route-wide kill switch rather than a publish toggle; `Deploy` remains the place where live public publication happens.
+- **Status-code language**: Keep `success_status_code` as a contract/defaults setting for OpenAPI, previews, and legacy mock behavior, while making it explicit that published live routes can override the live response status in `Flow` through `Set Response`.
+
 ## 2026-03-19: Focus-mode Flow editing uses a 3-pane node workbench
 - **Workbench layout**: In the full-screen Flow editor, keep selected-node input preview on the left, editable parameters/settings in the center, and output preview on the right instead of collapsing the editor into a skinny right rail or letting the side panes wrap below the fold.
 - **Editing priority**: Keep the center pane focused on actionable controls in focus mode; the first meaningful fields for common nodes such as `HTTP Request` should be reachable without scrolling through explanatory copy first.
@@ -38,7 +58,8 @@
 ## 2026-03-19: Connection scope should stay lightweight for now
 - **Scope model**: Add `project` and `environment` as lightweight metadata on `Connection` records instead of introducing a first-class Project model during this Flow-operator pass.
 - **Runtime boundary**: Keep flow nodes bound to explicit saved connection ids for now; use the new scope metadata to organize, filter, and rotate connections in the admin UI without silently changing runtime resolution rules.
-- **Operator UX**: Manage shared connections directly from the Flow workspace with create/edit/retire controls, while showing scope in both the manager and the node-binding selectors so mismatches are visible before publish.
+- **Operator UX**: Initially managed shared connections directly from the Flow workspace with create/edit/retire controls, while showing scope in both the manager and the node-binding selectors so mismatches were visible before publish.
+- **Superseded (2026-03-20)**: Full connection CRUD moved to a dedicated top-level `Connectors` page; Flow now keeps compact scope awareness plus node-binding selectors only.
 
 ## 2026-03-19: Flow mappings should share one ref-plus-template value language
 - **Authoring model**: Keep the Flow inspector JSON-first for now rather than introducing a separate mapping DSL; operators can map whole values with `{"$ref":"..."}` and compose inline strings with `{{...}}`.

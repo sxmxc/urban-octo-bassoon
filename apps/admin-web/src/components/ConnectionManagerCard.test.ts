@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/vue";
 
 import ConnectionManagerCard from "./ConnectionManagerCard.vue";
@@ -106,5 +106,35 @@ describe("ConnectionManagerCard", () => {
       within(dialog).getByText("Connection 'Duplicate name' is already in use for scope 'project-alpha/production'."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save connection" })).toBeInTheDocument();
+  }, 10_000);
+
+  it("emits delete when the operator confirms connection deletion", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const connection = buildConnection({
+      id: 12,
+      name: "Delete candidate",
+      project: "project-alpha",
+      environment: "production",
+    });
+    const view = render(ConnectionManagerCard, {
+      props: {
+        canWrite: true,
+        connections: [connection],
+        preferredProject: "project-alpha",
+        preferredEnvironment: "production",
+      },
+      global: {
+        plugins: [vuetify],
+      },
+    });
+
+    await fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'Delete connection "Delete candidate" from scope project-alpha/production? This cannot be undone.',
+    );
+    expect(view.emitted("delete")).toEqual([[12]]);
+
+    confirmSpy.mockRestore();
   });
 });

@@ -28,6 +28,7 @@ const pathParameters = ref<Record<string, string>>({});
 const queryParameters = ref<Record<string, string>>({});
 const requestBody = ref("{}");
 const samplePreview = ref<string | null>(null);
+const contractPreviewTab = ref<"request" | "response">("response");
 const currentImplementation = ref<RouteImplementation | null>(null);
 const deployments = ref<RouteDeployment[]>([]);
 const previewResult = ref<{
@@ -64,6 +65,44 @@ const canWriteRoutes = computed(() => auth.canWriteRoutes.value && !auth.mustCha
 const routeTestState = computed(() =>
   endpoint.value ? buildRouteTestState(endpoint.value, currentImplementation.value, deployments.value) : null,
 );
+const contractRequestPreviewText = computed(() => {
+  if (!endpoint.value) {
+    return prettyJson({});
+  }
+
+  const queryEntries = Object.entries(queryParameters.value)
+    .filter(([, value]) => String(value ?? "").trim().length > 0)
+    .map(([key, value]) => [key, String(value)]);
+  const queryString = new URLSearchParams(queryEntries).toString();
+
+  const previewPayload: Record<string, unknown> = {
+    method: endpoint.value.method,
+    path_template: endpoint.value.path,
+    resolved_path: resolvePathParameters(endpoint.value.path, pathParameters.value),
+    path_parameters: pathParameters.value,
+    query_parameters: queryParameters.value,
+  };
+
+  if (queryString) {
+    previewPayload.query_string = queryString;
+  }
+
+  if (!["GET", "DELETE"].includes(endpoint.value.method)) {
+    const trimmedBody = requestBody.value.trim();
+    if (!trimmedBody) {
+      previewPayload.request_body = null;
+    } else {
+      try {
+        previewPayload.request_body = JSON.parse(trimmedBody) as JsonValue;
+      } catch {
+        previewPayload.request_body_raw = requestBody.value;
+        previewPayload.request_body_error = "Request body must be valid JSON.";
+      }
+    }
+  }
+
+  return prettyJson(previewPayload);
+});
 
 function buildDefaultQueryParameterValues(parameters: RequestParameterDefinition[]): Record<string, string> {
   return parameters.reduce<Record<string, string>>((accumulator, parameter) => {
@@ -373,9 +412,9 @@ async function runLiveRequest(): Promise<void> {
           v-if="endpoint && canWriteRoutes"
           prepend-icon="mdi-shape-outline"
           variant="text"
-          @click="router.push({ name: 'schema-editor', params: { endpointId: endpoint.id } })"
+          @click="router.push({ name: 'endpoints-edit', params: { endpointId: endpoint.id }, query: { tab: 'contract' } })"
         >
-          Edit schema
+          Edit contract
         </v-btn>
       </div>
     </div>
@@ -571,24 +610,41 @@ async function runLiveRequest(): Promise<void> {
             <v-card-item>
               <v-card-title>Contract preview sample</v-card-title>
               <v-card-subtitle>
-                Generated from the saved response schema plus the shared preview inputs. This stays inside the admin preview engine.
+                {{
+                  contractPreviewTab === "request"
+                    ? "Derived from the shared preview inputs so you can inspect the request shape before running live traffic."
+                    : "Generated from the saved response schema plus the shared preview inputs. This stays inside the admin preview engine."
+                }}
               </v-card-subtitle>
 
               <template #append>
-                <v-btn
-                  color="secondary"
-                  :loading="isLoadingContractPreview"
-                  prepend-icon="mdi-flask-outline"
-                  variant="tonal"
-                  @click="refreshContractPreview"
-                >
-                  Generate contract preview
-                </v-btn>
+                <div class="d-flex flex-wrap align-center justify-end ga-2">
+                  <v-btn-toggle
+                    v-model="contractPreviewTab"
+                    color="primary"
+                    density="compact"
+                    mandatory
+                    variant="outlined"
+                  >
+                    <v-btn value="request">Request preview</v-btn>
+                    <v-btn value="response">Response preview</v-btn>
+                  </v-btn-toggle>
+                  <v-btn
+                    color="secondary"
+                    :loading="isLoadingContractPreview"
+                    prepend-icon="mdi-flask-outline"
+                    variant="tonal"
+                    @click="refreshContractPreview"
+                  >
+                    Generate contract preview
+                  </v-btn>
+                </div>
               </template>
             </v-card-item>
             <v-divider />
             <v-card-text>
-              <pre class="code-block">{{ samplePreview ?? "(generate the contract preview to see sample output)" }}</pre>
+              <pre v-if="contractPreviewTab === 'request'" class="code-block">{{ contractRequestPreviewText }}</pre>
+              <pre v-else class="code-block">{{ samplePreview ?? "(generate the contract preview to see sample output)" }}</pre>
             </v-card-text>
           </v-card>
         </v-col>

@@ -1,11 +1,30 @@
-import { createRouter, createWebHistory } from "vue-router";
+import { createRouter, createWebHistory, type RouteLocationGeneric } from "vue-router";
 import EndpointsView from "../views/EndpointsView.vue";
 import EndpointPreviewView from "../views/EndpointPreviewView.vue";
+import ConnectionsView from "../views/ConnectionsView.vue";
 import LoginView from "../views/LoginView.vue";
 import ProfileView from "../views/ProfileView.vue";
-import SchemaEditorView from "../views/SchemaEditorView.vue";
 import UsersView from "../views/UsersView.vue";
 import { ensureAuthBooted, hasPermissionValue, isAuthenticated, mustChangePassword } from "../composables/useAuth";
+import type { AdminPermission } from "../types/endpoints";
+
+export function mapLegacySchemaEditorRedirect(to: RouteLocationGeneric) {
+  const legacyTab = Array.isArray(to.query.tab) ? to.query.tab[0] : to.query.tab;
+  const contractTab = legacyTab === "request" || legacyTab === "response" ? legacyTab : undefined;
+  const nextQuery = {
+    ...to.query,
+    tab: "contract",
+    ...(contractTab ? { contractTab } : {}),
+  };
+
+  return {
+    name: "endpoints-edit",
+    params: {
+      endpointId: to.params.endpointId,
+    },
+    query: nextQuery,
+  };
+}
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -45,6 +64,16 @@ export const router = createRouter({
       },
       meta: {
         requiresAuth: true,
+      },
+    },
+    {
+      path: "/connectors",
+      name: "connectors",
+      component: ConnectionsView,
+      meta: {
+        requiresAuth: true,
+        permission: "routes.write",
+        title: "Connectors",
       },
     },
     {
@@ -102,7 +131,7 @@ export const router = createRouter({
     {
       path: "/endpoints/:endpointId/schema",
       name: "schema-editor",
-      component: SchemaEditorView,
+      redirect: mapLegacySchemaEditorRedirect,
       meta: {
         requiresAuth: true,
         permission: "routes.write",
@@ -171,4 +200,3 @@ router.afterEach((to, from) => {
     }
   }
 });
-import type { AdminPermission } from "../types/endpoints";

@@ -4,10 +4,15 @@ This file tracks the work needed to bootstrap and evolve the project.
 Read `docs/roadmap.md` alongside this file if you are picking up the next implementation slice.
 
 ## Now
-- [ ] Move the schema editor under the route `Contract` journey instead of keeping it as a separate transitional page
+- [ ] Fix the remaining full-screen `Flow` inspector pointer-layering bug so dropdowns, connection selectors, and `Remove path` are reliably mouse-usable in focus mode
+- [ ] Improve `Flow` authoring ergonomics for large-context nodes and branch editing by reducing inspector vertical sprawl and making reconnect/remove-path flows more intuitive
+- [ ] Make the tester `Request preview` reflect the saved request contract/schema, including an accurate request-body preview, instead of primarily echoing shared test inputs
 
 ## Next
 - [ ] Add advanced inbound auth (API keys, bearer token policies, scopes)
+- [ ] Decide and implement a safe request-body capture/replay policy for execution traces so the `Test` journey can replay more than path/query values
+- [ ] Expand the live `Flow` node set for complex endpoints with `merge/join`, state/variable storage, loop/aggregate behavior, and connector-aware retry/status routing
+- [ ] Polish connector UX after browser QA by deduplicating blocked-delete errors and normalizing seeded/demo connector names used in local testing
 
 ## Later
 - [ ] Improve OpenAPI and reference-feed publishing so only promoted runtime contracts are exposed
@@ -17,7 +22,18 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [ ] (none)
 
 ## Done
+- [x] Centralize manual version bumps around a repo-root `VERSION` file with sync/check tooling, Make targets, and CI/tag drift guards
+- [x] Warn before leaving the route `Flow` editor for same-route preview/test navigation and stop historical route implementations from blocking connector deletion
+- [x] Add basic live telemetry metrics to the `/endpoints` browse dashboard using aggregated `ExecutionRun` / `ExecutionStep` history, including slow-route and slow-flow hotspot summaries
+- [x] Centralize connector CRUD on the dedicated `Connectors` page, remove full connector CRUD from the `Flow` tab, and add true connection deletion with backend in-use guards
+- [x] Add a dedicated top-level `Connectors` page to the primary nav instead of hiding connector management inside the route `Flow` tab
+- [x] Support real connector deletion instead of retire-only lifecycle controls when a connection is not referenced by saved flows
+- [x] Remove the redundant full connector-management card from the route `Flow` tab and keep only compact route-scoped connector context plus a handoff to `Connectors`
+- [x] Move the schema editor under the route `Contract` journey instead of keeping it as a separate transitional page
 - [x] Align the Flow node editor around the same input/config/output workbench in both standard and full-screen modes, including embedded payload-tree ref pills and a canvas-toolbar save control in focus mode
+- [x] Add leave/reload protection for dirty `Flow` drafts so unsaved flow changes are not silently discarded
+- [x] Fix the full-screen/standard `Flow` connection-binding regression so saved connector ids no longer collapse to `Connection #pending` in focus mode
+- [x] Expose outgoing-path removal directly inside the selected-node inspector instead of forcing operators back into the flow-info panel
 - [x] Ignore stale execution-detail responses when operators change selected runs before earlier requests finish
 - [x] Add execution drill-down and replay tooling on top of the new `ExecutionRun` / `ExecutionStep` records
 - [x] Redirect the API root `/` to `/status` while keeping `/api` empty

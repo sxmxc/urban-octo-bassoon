@@ -37,6 +37,7 @@ from app.schemas import (
     EndpointImportSummary,
     EndpointRead,
     EndpointUpdate,
+    ExecutionTelemetryOverview,
     ExecutionRunDetail,
     ExecutionRunRead,
     PreviewRequest,
@@ -78,7 +79,9 @@ from app.services.admin_endpoint_policy import (
 )
 from app.services.mock_generation import preview_from_schema
 from app.services.route_runtime import (
+    build_execution_telemetry_overview,
     create_connection,
+    delete_connection,
     get_execution_run_detail,
     get_route_implementation_read,
     invalidate_deployment_registry,
@@ -1022,6 +1025,22 @@ def update_runtime_connection(
     return ConnectionRead.model_validate(updated_connection)
 
 
+@router.delete("/connections/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_runtime_connection(
+    connection_id: int,
+    session: Session = Depends(get_session),
+    _: AdminContext = Depends(require_route_write_access),
+) -> Response:
+    connection = session.get(Connection, connection_id)
+    if connection is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
+    try:
+        delete_connection(session, connection)
+    except ValueError as error:
+        _raise_user_input_error(error)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/executions", response_model=list[ExecutionRunRead])
 def list_route_executions(
     endpoint_id: int | None = None,
@@ -1030,6 +1049,16 @@ def list_route_executions(
     _: AdminContext = Depends(require_route_read_access),
 ) -> list[ExecutionRunRead]:
     return list_execution_run_reads(session, route_id=endpoint_id, limit=max(1, min(limit, 200)))
+
+
+@router.get("/telemetry/executions", response_model=ExecutionTelemetryOverview)
+def read_execution_telemetry_overview(
+    limit: int = 200,
+    top: int = 5,
+    session: Session = Depends(get_session),
+    _: AdminContext = Depends(require_route_read_access),
+) -> ExecutionTelemetryOverview:
+    return build_execution_telemetry_overview(session, limit=limit, top=top)
 
 
 @router.get("/executions/{run_id}", response_model=ExecutionRunDetail)

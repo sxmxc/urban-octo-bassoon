@@ -165,6 +165,10 @@ const ROUTE_FLOW_NODE_WIDTH = 236;
 const ROUTE_FLOW_NODE_HEIGHT = 104;
 const DEFAULT_CONNECTION_PROJECT = "default";
 const DEFAULT_CONNECTION_ENVIRONMENT = "production";
+const FOCUS_SELECT_MENU_PROPS = {
+  contentClass: "route-flow-editor__select-menu",
+  zIndex: 3600,
+};
 
 const props = withDefaults(
   defineProps<{
@@ -710,6 +714,18 @@ const flowResponseComparison = computed(() => {
 
   return flowInspectionSnapshot.value.nodesById[responseNode.id]?.responseComparison ?? null;
 });
+const selectedNodePathManagementCopy = computed(() => {
+  const node = selectedCanvasNode.value;
+  if (!node) {
+    return "";
+  }
+
+  if (node.data.runtimeType === "if_condition" || node.data.runtimeType === "switch") {
+    return "Use branch labels below to steer each path, and remove paths directly if this node has stale links.";
+  }
+
+  return "Review where this node routes next, and remove stale paths without opening Flow info.";
+});
 
 function existingNodeForType(nodeType: RouteFlowNodeType): CanvasNode | null {
   return canvasNodes.value.find((node) => node.data.runtimeType === nodeType) ?? null;
@@ -803,10 +819,7 @@ function setFocusMode(value: boolean): void {
   isFocusMode.value = value;
   isFocusPaletteOpen.value = false;
   isFocusInfoOpen.value = false;
-
-  if (value) {
-    isFocusInspectorOpen.value = false;
-  }
+  isFocusInspectorOpen.value = false;
 
   void nextTick(() => {
     if (value && selectedNodeId.value) {
@@ -823,10 +836,16 @@ function toggleFocusMode(): void {
 }
 
 function toggleFocusPalette(): void {
+  if (!isFocusPaletteOpen.value) {
+    isFocusInfoOpen.value = false;
+  }
   isFocusPaletteOpen.value = !isFocusPaletteOpen.value;
 }
 
 function toggleFocusInfo(): void {
+  if (!isFocusInfoOpen.value) {
+    isFocusPaletteOpen.value = false;
+  }
   isFocusInfoOpen.value = !isFocusInfoOpen.value;
 }
 
@@ -835,6 +854,10 @@ function toggleFocusInspector(): void {
     return;
   }
 
+  if (!isFocusInspectorOpen.value) {
+    isFocusPaletteOpen.value = false;
+    isFocusInfoOpen.value = false;
+  }
   isFocusInspectorOpen.value = !isFocusInspectorOpen.value;
   if (isFocusInspectorOpen.value) {
     focusCanvasNode(selectedCanvasNode.value.id);
@@ -1734,12 +1757,17 @@ function applyReferenceSnippet(target: ReferenceTarget, refPath: string): void {
 function handleNodeClick(event: NodeMouseEvent): void {
   selectedNodeId.value = event.node.id;
   if (isFocusMode.value) {
-    isFocusInspectorOpen.value = true;
     isFocusPaletteOpen.value = false;
+    isFocusInfoOpen.value = false;
   }
 }
 
 function clearSelection(): void {
+  if (isFocusMode.value) {
+    isFocusPaletteOpen.value = false;
+    isFocusInfoOpen.value = false;
+    return;
+  }
   selectedNodeId.value = null;
   isFocusInspectorOpen.value = false;
 }
@@ -2009,6 +2037,27 @@ function handleConnect(connection: VueFlowConnection): void {
   commitStructuralDefinition(nextDefinition);
 }
 
+function handleWindowKeydown(event: KeyboardEvent): void {
+  if (event.key !== "Escape" || !isFocusMode.value) {
+    return;
+  }
+
+  if (isFocusPaletteOpen.value) {
+    isFocusPaletteOpen.value = false;
+    return;
+  }
+  if (isFocusInfoOpen.value) {
+    isFocusInfoOpen.value = false;
+    return;
+  }
+  if (isFocusInspectorOpen.value) {
+    isFocusInspectorOpen.value = false;
+    return;
+  }
+
+  toggleFocusMode();
+}
+
 watch(
   () => props.modelValue,
   (value) => {
@@ -2065,22 +2114,27 @@ watch(
 watch(isFocusMode, (value) => {
   emit("focus-mode-change", value);
 
-  if (typeof document === "undefined") {
+  if (typeof document === "undefined" || typeof window === "undefined") {
     return;
   }
 
   if (value) {
     previousBodyOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleWindowKeydown);
     return;
   }
 
+  window.removeEventListener("keydown", handleWindowKeydown);
   document.body.style.overflow = previousBodyOverflow;
 });
 
 onBeforeUnmount(() => {
   if (typeof document !== "undefined") {
     document.body.style.overflow = previousBodyOverflow;
+  }
+  if (typeof window !== "undefined") {
+    window.removeEventListener("keydown", handleWindowKeydown);
   }
 });
 </script>
@@ -2851,6 +2905,7 @@ onBeforeUnmount(() => {
                           item-title="title"
                           item-value="value"
                           label="Operator"
+                          :menu-props="FOCUS_SELECT_MENU_PROPS"
                         />
                         <v-textarea
                           v-if="requiresIfRightValue"
@@ -2884,6 +2939,7 @@ onBeforeUnmount(() => {
                                 item-value="value"
                                 label="Branch"
                                 :model-value="connection.branch"
+                                :menu-props="FOCUS_SELECT_MENU_PROPS"
                                 @update:model-value="updateIfBranchForEdge(connection.id, String($event ?? ''))"
                               />
                             </div>
@@ -2945,6 +3001,7 @@ onBeforeUnmount(() => {
                                 item-value="value"
                                 label="Path type"
                                 :model-value="connection.branch"
+                                :menu-props="FOCUS_SELECT_MENU_PROPS"
                                 @update:model-value="updateSwitchBranchMode(connection.id, String($event ?? ''))"
                               />
                               <v-text-field
@@ -2965,6 +3022,7 @@ onBeforeUnmount(() => {
                           :items="httpConnectionOptions"
                           clearable
                           label="HTTP connection"
+                          :menu-props="FOCUS_SELECT_MENU_PROPS"
                         />
 
                         <div
@@ -2991,6 +3049,7 @@ onBeforeUnmount(() => {
                               v-model="selectedNodeHttpMethod"
                               :items="HTTP_METHOD_OPTIONS"
                               label="Method"
+                              :menu-props="FOCUS_SELECT_MENU_PROPS"
                             />
                           </v-col>
                           <v-col cols="12" md="6">
@@ -3083,6 +3142,7 @@ onBeforeUnmount(() => {
                           :items="postgresConnectionOptions"
                           clearable
                           label="Postgres connection"
+                          :menu-props="FOCUS_SELECT_MENU_PROPS"
                         />
                         <v-textarea
                           auto-grow
@@ -3243,6 +3303,39 @@ onBeforeUnmount(() => {
                           {{ note }}
                         </v-alert>
                       </template>
+
+                      <div class="route-flow-editor__snippet-row mt-4">
+                        <span class="text-caption text-medium-emphasis">Connected paths</span>
+                        <div class="text-caption text-medium-emphasis mt-2">
+                          {{ selectedNodePathManagementCopy }}
+                        </div>
+                        <div v-if="selectedNodeOutgoingConnections.length === 0" class="text-caption text-medium-emphasis mt-2">
+                          This node currently has no outgoing paths.
+                        </div>
+                        <div v-else class="d-flex flex-column ga-3 mt-2">
+                          <div
+                            v-for="connection in selectedNodeOutgoingConnections"
+                            :key="`manage-${connection.id}`"
+                            class="route-flow-editor__connection-row"
+                          >
+                            <div class="text-body-2">
+                              <strong>{{ selectedCanvasNode.label }}</strong>
+                              <span v-if="connection.label" class="text-medium-emphasis"> via {{ connection.label }}</span>
+                              <span class="text-medium-emphasis"> to </span>
+                              <strong>{{ connection.targetLabel }}</strong>
+                            </div>
+                            <v-btn
+                              color="error"
+                              prepend-icon="mdi-link-variant-remove"
+                              size="small"
+                              variant="text"
+                              @click="removeConnection(connection.id)"
+                            >
+                              Remove path
+                            </v-btn>
+                          </div>
+                        </div>
+                      </div>
                     </v-sheet>
                   </div>
                 </v-col>
@@ -3738,6 +3831,10 @@ onBeforeUnmount(() => {
   background: rgba(148, 163, 184, 0.22);
 }
 
+:deep(.route-flow-editor__select-menu) {
+  z-index: 3600 !important;
+}
+
 :deep(.route-flow-editor__canvas .vue-flow__pane) {
   cursor: grab;
 }
@@ -3791,7 +3888,7 @@ onBeforeUnmount(() => {
   bottom: 0.75rem;
   left: 0.75rem !important;
   width: auto !important;
-  height: min(52vh, 35rem);
+  height: min(46vh, 31rem);
   margin: 0 !important;
   display: grid !important;
   grid-template-columns: minmax(16rem, 0.95fr) minmax(0, 1.4fr) minmax(16rem, 0.95fr);
@@ -4031,7 +4128,7 @@ onBeforeUnmount(() => {
   .route-flow-editor__detail-grid--focus {
     left: 0.55rem !important;
     right: 0.55rem;
-    height: min(58vh, 34rem);
+    height: min(52vh, 31rem);
     grid-template-columns: minmax(13rem, 0.85fr) minmax(0, 1.35fr) minmax(13rem, 0.85fr);
   }
 }
@@ -4079,7 +4176,7 @@ onBeforeUnmount(() => {
     right: 0.5rem;
     bottom: 0.5rem;
     width: auto !important;
-    height: min(64vh, 33rem);
+    height: min(58vh, 30rem);
     display: grid !important;
     grid-template-columns: 1fr;
   }

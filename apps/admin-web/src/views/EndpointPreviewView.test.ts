@@ -239,6 +239,8 @@ describe("EndpointPreviewView", () => {
     expect(screen.getByText("Schema-driven contract preview")).toBeInTheDocument();
     expect(screen.getByText("Implementation 4 is live")).toBeInTheDocument();
     expect(screen.getByText("Draft v3 is ahead of live")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Request preview" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Response preview" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Generate contract preview" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send live request" })).toBeInTheDocument();
 
@@ -258,6 +260,18 @@ describe("EndpointPreviewView", () => {
     await fireEvent.update(screen.getByLabelText("Path parameter: orderId"), "ord-123");
     await fireEvent.update(screen.getByLabelText("Query parameter: status"), "queued");
     await fireEvent.update(screen.getByLabelText("Request body"), "{\"value\":1}");
+    await fireEvent.click(screen.getByRole("button", { name: "Request preview" }));
+    await flushPromises();
+
+    const requestPreviewBlock = view.container.querySelectorAll("pre.code-block")[0];
+    expect(requestPreviewBlock).toHaveTextContent('"method": "POST"');
+    expect(requestPreviewBlock).toHaveTextContent('"path_template": "/api/orders/{orderId}"');
+    expect(requestPreviewBlock).toHaveTextContent('"resolved_path": "/api/orders/ord-123"');
+    expect(requestPreviewBlock).toHaveTextContent('"query_string": "status=queued"');
+    expect(requestPreviewBlock).toHaveTextContent('"request_body": {');
+    expect(requestPreviewBlock).toHaveTextContent('"value": 1');
+
+    await fireEvent.click(screen.getByRole("button", { name: "Response preview" }));
     await fireEvent.click(screen.getByRole("button", { name: "Generate contract preview" }));
     await flushPromises();
 
@@ -301,6 +315,29 @@ describe("EndpointPreviewView", () => {
       }),
     );
     expect(codeBlocks[1]).toHaveTextContent('"source": "live"');
+  });
+
+  it("routes contract editing back into the route Contract tab", async () => {
+    const router = createRouterInstance();
+    await router.push("/endpoints/1/preview");
+    await router.isReady();
+    const pushSpy = vi.spyOn(router, "push");
+
+    render(EndpointPreviewView, {
+      global: {
+        plugins: [vuetify, router],
+      },
+    });
+    await flushPromises();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Edit contract" }));
+    await flushPromises();
+
+    expect(pushSpy).toHaveBeenCalledWith({
+      name: "endpoints-edit",
+      params: { endpointId: 1 },
+      query: { tab: "contract" },
+    });
   });
 
   it("keeps contract preview available when a saved draft has no active deployment", async () => {

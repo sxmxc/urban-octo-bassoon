@@ -375,13 +375,19 @@ describe("RouteFlowEditor", () => {
     expect(screen.getByText("Flow signals")).toBeInTheDocument();
     expect(screen.getByText("Route paths")).toBeInTheDocument();
     expect(screen.queryByText("Flow sample")).not.toBeInTheDocument();
-  });
+  }, 10_000);
 
-  it("shows a three-pane workbench in focus mode with schema/table/json previews", async () => {
+  it("opens the focus workbench on demand so node selection does not trap the canvas", async () => {
     renderEditor();
 
     await fireEvent.click(screen.getAllByRole("button", { name: "Open full editor" })[0]);
     await fireEvent.click(screen.getByTestId("canvas-node-transform-1"));
+    await flushPromises();
+
+    expect(screen.queryByText("Input payload")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit Transform" })).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Edit Transform" }));
     await flushPromises();
 
     expect(screen.getByText("Input payload")).toBeInTheDocument();
@@ -418,6 +424,27 @@ describe("RouteFlowEditor", () => {
     expect((emittedEvents["save-requested"] ?? []).length).toBe(1);
   });
 
+  it("removes an outgoing path directly from the focus inspector", async () => {
+    const view = renderEditor();
+
+    await fireEvent.click(screen.getAllByRole("button", { name: "Open full editor" })[0]);
+    await fireEvent.click(screen.getByTestId("canvas-node-transform-1"));
+    await fireEvent.click(screen.getByRole("button", { name: "Edit Transform" }));
+    await flushPromises();
+
+    expect(screen.getByText("Connected paths")).toBeInTheDocument();
+    expect(screen.getByText("Review where this node routes next, and remove stale paths without opening Flow info.")).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Remove path" }));
+    await flushPromises();
+
+    const emittedEvents = view.emitted() as Record<string, Array<[RouteFlowDefinition]>>;
+    const updates = emittedEvents["update:modelValue"] ?? [];
+    const lastUpdate = updates.at(-1)?.[0] as RouteFlowDefinition | undefined;
+    expect(lastUpdate?.edges).toHaveLength(1);
+    expect(lastUpdate?.edges[0]).toEqual(expect.objectContaining({ source: "trigger", target: "transform-1" }));
+  });
+
   it("disables the focus toolbar save icon when save is unavailable", async () => {
     const view = renderEditor({
       saveDisabled: true,
@@ -443,6 +470,7 @@ describe("RouteFlowEditor", () => {
 
     await fireEvent.click(screen.getAllByRole("button", { name: "Open full editor" })[0]);
     await fireEvent.click(screen.getByTestId("canvas-node-http-request-1"));
+    await fireEvent.click(screen.getByRole("button", { name: "Edit HTTP Request" }));
     await flushPromises();
 
     const pathInput = screen.getByLabelText("Path or URL template") as HTMLInputElement;
@@ -484,6 +512,7 @@ describe("RouteFlowEditor", () => {
 
     await fireEvent.click(screen.getAllByRole("button", { name: "Open full editor" })[0]);
     await fireEvent.click(screen.getByTestId("canvas-node-http-request-1"));
+    await fireEvent.click(screen.getByRole("button", { name: "Edit HTTP Request" }));
     await flushPromises();
 
     const pathInput = screen.getByLabelText("Path or URL template") as HTMLInputElement;
