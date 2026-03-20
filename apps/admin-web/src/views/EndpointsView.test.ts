@@ -1047,6 +1047,28 @@ describe("EndpointsView", () => {
     confirmSpy.mockRestore();
   });
 
+  it("blocks leaving the flow editor for the same route preview when unsaved flow changes are not confirmed", async () => {
+    vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    const { router } = await renderView("/endpoints/1?tab=flow", "edit");
+    await flushPromises();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Make flow dirty" }));
+    await flushPromises();
+
+    await router.push({ name: "endpoint-preview", params: { endpointId: 1 } });
+    await flushPromises();
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      "You have unsaved Flow changes. Leave this route and discard the current flow draft?",
+    );
+    expect(router.currentRoute.value.name).toBe("endpoints-edit");
+    expect(router.currentRoute.value.query.tab).toBe("flow");
+
+    confirmSpy.mockRestore();
+  });
+
   it("makes the Test tab explicit about contract preview versus live runtime state", async () => {
     vi.mocked(listEndpoints).mockResolvedValue([createEndpoint(1, { name: "List users" })]);
 

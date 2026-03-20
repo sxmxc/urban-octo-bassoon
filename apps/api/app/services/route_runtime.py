@@ -2220,8 +2220,16 @@ def _route_implementation_uses_connection(implementation: RouteImplementation, c
     return False
 
 
+def _list_active_or_draft_route_implementations(session: Session) -> list[RouteImplementation]:
+    active_implementation_ids = select(RouteDeployment.implementation_id).where(RouteDeployment.is_active == True)
+    statement = select(RouteImplementation).where(
+        (RouteImplementation.is_draft == True) | (RouteImplementation.id.in_(active_implementation_ids))
+    )
+    return list(session.execute(statement).scalars())
+
+
 def _connection_usage_route_labels(session: Session, connection_id: int) -> list[str]:
-    implementations = list(session.execute(select(RouteImplementation)).scalars())
+    implementations = _list_active_or_draft_route_implementations(session)
     route_ids = sorted(
         {
             int(implementation.route_id)

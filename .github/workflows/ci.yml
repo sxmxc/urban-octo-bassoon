@@ -17,6 +17,14 @@ permissions:
   contents: read
 
 jobs:
+  version-consistency:
+    name: Version Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check single-source version sync
+        run: python3 scripts/versioning.py check
+
   backend:
     name: Backend Tests
     runs-on: ubuntu-latest

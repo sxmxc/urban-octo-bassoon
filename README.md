@@ -101,12 +101,20 @@ This fork is not trying to become a generic workflow builder. The core model rem
 ## 🚢 CI/CD
 
 - GitHub Actions CI now runs backend tests, frontend lint/test/build, and a Docker Compose smoke test on `main` pushes and pull requests.
+- GitHub Actions CI also checks that every version consumer stays in sync with the repo-root `VERSION` file.
 - Runtime container images are built from dedicated `runtime` Docker targets rather than the local hot-reload targets used by `make up`.
 - The image workflow validates runtime images on pull requests and publishes multi-arch `linux/amd64` + `linux/arm64` images to GHCR on `main` and `v*` tags.
 - Release tags follow `ghcr.io/<owner>/artificer-api` and `ghcr.io/<owner>/artificer-studio` with:
   - `vX.Y.Z`, `X.Y`, `X`, and `latest` for semver tags
   - branch, `edge`, and `sha-<commit>` tags for default-branch builds
 - Each image build also uploads metadata artifacts and provenance so digests/tags are easy to inspect in Actions.
+
+Local release/version helpers:
+
+- `make version`
+- `make version-check`
+- `make set-version VERSION=2.0.0-alpha.2`
+- `make bump-version PART=prerelease PRE_LABEL=alpha`
 
 ## 📁 Repo layout
 

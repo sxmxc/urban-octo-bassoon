@@ -1,5 +1,10 @@
 # DECISIONS
 
+## 2026-03-20: Repo-root VERSION is the single manual version source of truth
+- **Canonical source**: Keep the checked-in repo root `VERSION` file as the manual source of truth for application releases instead of hand-editing version strings across frontend, backend, and Docker build files.
+- **Sync workflow**: Maintain a small repo-local `scripts/versioning.py` helper plus `make version`, `make version-check`, `make set-version`, and `make bump-version` targets to rewrite the downstream consumers in one pass.
+- **Release guardrails**: Fail CI when any consumer drifts from `VERSION`, and require `v...` release tags to match `VERSION` exactly before the image workflow publishes official tags.
+
 ## 2026-03-20: Basic telemetry should come from runtime history before adding a time-series system
 - **Delivery slice**: Use aggregated `ExecutionRun` / `ExecutionStep` history for the first `/endpoints` browse-dashboard telemetry view instead of introducing a new metrics store immediately.
 - **Operator value**: Surface recent-run average/p95 response time, slow-route rankings, and slow flow-node hotspots so editors can find problematic live routes before a fuller observability stack exists.

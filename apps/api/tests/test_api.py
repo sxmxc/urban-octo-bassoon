@@ -1117,6 +1117,124 @@ def test_runtime_connections_delete_rejects_referenced_connection(empty_db):
     assert "GET /api/connection-reference" in delete_response.json()["detail"]
 
 
+def test_runtime_connections_delete_ignores_historical_route_versions(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    old_connection_response = client.post(
+        "/api/admin/connections",
+        json={
+            "project": "default",
+            "environment": "production",
+            "name": "Historical connection",
+            "connector_type": "http",
+            "description": None,
+            "config": {"base_url": "https://api.example.com"},
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert old_connection_response.status_code == 201
+    old_connection_id = old_connection_response.json()["id"]
+
+    new_connection_response = client.post(
+        "/api/admin/connections",
+        json={
+            "project": "default",
+            "environment": "production",
+            "name": "Current connection",
+            "connector_type": "http",
+            "description": None,
+            "config": {"base_url": "https://api.example.com/v2"},
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert new_connection_response.status_code == 201
+    new_connection_id = new_connection_response.json()["id"]
+
+    create_route_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="Historical connector route", path="/api/historical-connection-reference"),
+        headers=headers,
+    )
+    assert create_route_response.status_code == 201
+    endpoint_id = create_route_response.json()["id"]
+
+    first_draft_response = client.put(
+        f"/api/admin/endpoints/{endpoint_id}/implementation/current",
+        json={
+            "flow_definition": {
+                "schema_version": 1,
+                "nodes": [
+                    {"id": "trigger", "type": "api_trigger", "config": {}},
+                    {
+                        "id": "http-1",
+                        "type": "http_request",
+                        "config": {
+                            "connection_id": old_connection_id,
+                            "method": "GET",
+                            "path": "/status",
+                        },
+                    },
+                    {"id": "response", "type": "set_response", "config": {"status_code": 200, "body": {"ok": True}}},
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "http-1"},
+                    {"source": "http-1", "target": "response"},
+                ],
+            },
+        },
+        headers=headers,
+    )
+    assert first_draft_response.status_code == 200
+
+    first_publish_response = client.post(
+        f"/api/admin/endpoints/{endpoint_id}/deployments/publish",
+        json={"environment": "production"},
+        headers=headers,
+    )
+    assert first_publish_response.status_code == 201
+
+    second_draft_response = client.put(
+        f"/api/admin/endpoints/{endpoint_id}/implementation/current",
+        json={
+            "flow_definition": {
+                "schema_version": 1,
+                "nodes": [
+                    {"id": "trigger", "type": "api_trigger", "config": {}},
+                    {
+                        "id": "http-1",
+                        "type": "http_request",
+                        "config": {
+                            "connection_id": new_connection_id,
+                            "method": "GET",
+                            "path": "/status",
+                        },
+                    },
+                    {"id": "response", "type": "set_response", "config": {"status_code": 200, "body": {"ok": True}}},
+                ],
+                "edges": [
+                    {"source": "trigger", "target": "http-1"},
+                    {"source": "http-1", "target": "response"},
+                ],
+            },
+        },
+        headers=headers,
+    )
+    assert second_draft_response.status_code == 200
+
+    second_publish_response = client.post(
+        f"/api/admin/endpoints/{endpoint_id}/deployments/publish",
+        json={"environment": "production"},
+        headers=headers,
+    )
+    assert second_publish_response.status_code == 201
+
+    delete_response = client.delete(f"/api/admin/connections/{old_connection_id}", headers=headers)
+    assert delete_response.status_code == 204
+
+
 def test_route_runtime_rejects_invalid_connector_node_config(empty_db):
     client = TestClient(app)
     headers = _login_headers(client)

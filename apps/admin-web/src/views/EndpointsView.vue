@@ -248,8 +248,21 @@ const activeContractSchemaTab = computed<ContractSchemaTab>(() => {
 const contractEditorPath = computed(() => selectedEndpoint.value?.path ?? draft.value.path);
 
 function stripContractFields(source: EndpointDraft): Omit<EndpointDraft, "request_schema" | "response_schema" | "seed_key"> {
-  const { request_schema: _requestSchema, response_schema: _responseSchema, seed_key: _seedKey, ...rest } = source;
-  return rest;
+  return {
+    name: source.name,
+    method: source.method,
+    path: source.path,
+    category: source.category,
+    tags: source.tags,
+    summary: source.summary,
+    description: source.description,
+    enabled: source.enabled,
+    auth_mode: source.auth_mode,
+    success_status_code: source.success_status_code,
+    error_rate: source.error_rate,
+    latency_min_ms: source.latency_min_ms,
+    latency_max_ms: source.latency_max_ms,
+  };
 }
 
 const isContractDirty = computed(() => {
@@ -769,11 +782,11 @@ function parseRouteEndpointId(rawId: unknown): number | null {
   return null;
 }
 
-function shouldConfirmFlowNavigation(nextEndpointId: number | null): boolean {
+function shouldConfirmFlowNavigation(nextEndpointId: number | null, nextRouteName: string | symbol | null | undefined): boolean {
   if (!shouldWarnOnUnsavedFlowChanges.value) {
     return false;
   }
-  if (nextEndpointId === endpointId.value) {
+  if (nextRouteName === "endpoints-edit" && nextEndpointId === endpointId.value) {
     return false;
   }
   return true;
@@ -823,7 +836,7 @@ onMounted(() => {
 
   removeFlowNavigationGuard = router.beforeEach((to) => {
     const nextEndpointId = parseRouteEndpointId(to.params?.endpointId);
-    if (!shouldConfirmFlowNavigation(nextEndpointId)) {
+    if (!shouldConfirmFlowNavigation(nextEndpointId, to.name)) {
       return true;
     }
     return confirmFlowNavigationLoss();

@@ -52,7 +52,6 @@ vi.mock("../api/admin", async () => {
   };
 });
 
-// eslint-disable-next-line vue/one-component-per-file
 const ConnectionManagerCardStub = defineComponent({
   props: {
     canWrite: {

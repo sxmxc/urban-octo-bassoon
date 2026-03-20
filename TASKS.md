@@ -22,6 +22,8 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [ ] (none)
 
 ## Done
+- [x] Centralize manual version bumps around a repo-root `VERSION` file with sync/check tooling, Make targets, and CI/tag drift guards
+- [x] Warn before leaving the route `Flow` editor for same-route preview/test navigation and stop historical route implementations from blocking connector deletion
 - [x] Add basic live telemetry metrics to the `/endpoints` browse dashboard using aggregated `ExecutionRun` / `ExecutionStep` history, including slow-route and slow-flow hotspot summaries
 - [x] Centralize connector CRUD on the dedicated `Connectors` page, remove full connector CRUD from the `Flow` tab, and add true connection deletion with backend in-use guards
 - [x] Add a dedicated top-level `Connectors` page to the primary nav instead of hiding connector management inside the route `Flow` tab
