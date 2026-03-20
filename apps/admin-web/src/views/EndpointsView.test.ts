@@ -956,7 +956,7 @@ describe("EndpointsView", () => {
     expect(screen.getByTestId("route-flow-connections")).toHaveTextContent("1");
     expect(screen.getByTestId("flow-connection-context")).toHaveTextContent("Scope · default / production");
     expect(screen.getByTestId("flow-connection-context")).toHaveTextContent("1 in scope");
-    expect(screen.getByTestId("flow-connection-context")).toHaveTextContent("1 total saved");
+    expect(screen.getByTestId("flow-connection-context")).toHaveTextContent("1 total");
     expect(vi.mocked(getCurrentRouteImplementation)).toHaveBeenCalledWith(
       1,
       expect.objectContaining({ token: "session-token" }),
@@ -1076,22 +1076,11 @@ describe("EndpointsView", () => {
     await flushPromises();
 
     expect(screen.getByRole("tab", { name: "Test" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("Contract preview")).toBeInTheDocument();
-    expect(screen.getByText("Schema-driven contract preview")).toBeInTheDocument();
-    expect(screen.getByText("Live request path")).toBeInTheDocument();
+    expect(screen.getAllByText("Contract preview").length).toBeGreaterThan(0);
+    expect(screen.getByText("Route status")).toBeInTheDocument();
     expect(screen.getByText("Implementation 1 is live")).toBeInTheDocument();
-    expect(screen.getByText("Draft vs live")).toBeInTheDocument();
+    expect(screen.getByText("Draft status")).toBeInTheDocument();
     expect(screen.getByText("Draft v1 is ahead of live")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "The route tester compares an admin-only contract preview with real public requests. Only published live deployments can create execution traces below.",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Execution history only appears for published live implementations. Legacy mock traffic does not write runtime traces here.",
-      ),
-    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open route tester" })).toBeInTheDocument();
     expect(screen.getByText("Published implementation: 1")).toBeInTheDocument();
   });
@@ -1259,7 +1248,7 @@ describe("EndpointsView", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("This route has deployment history but no active live binding. Publish again to restore public traffic."),
+      screen.getByText("This route has deployment history but no active live deployment."),
     ).toBeInTheDocument();
 
     confirmSpy.mockRestore();

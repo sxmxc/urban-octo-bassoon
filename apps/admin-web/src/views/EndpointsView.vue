@@ -363,9 +363,9 @@ const deploymentSummary = computed(() => {
     return `Published ${formatTimestamp(activeDeployment.value.published_at)}`;
   }
   if (hasDeploymentHistory.value) {
-    return "This route has deployment history but no active live binding. Publish again to restore public traffic.";
+    return "This route has deployment history but no active live deployment.";
   }
-  return "Publish this route when the flow draft is ready for live traffic.";
+  return "Publish this route when the draft is ready.";
 });
 const browseMethodMix = computed(() => {
   const methodCounts = new Map<string, number>();
@@ -2130,7 +2130,7 @@ const activeTitle = computed(() => {
                         </template>
                         <v-card-title>Contract</v-card-title>
                         <v-card-subtitle>
-                          Request and response schemas remain the public contract source of truth.
+                          Define the request and response contract for this route.
                         </v-card-subtitle>
 
                         <template #append>
@@ -2168,8 +2168,7 @@ const activeTitle = computed(() => {
                           color="info"
                           variant="tonal"
                         >
-                          Unsaved Overview edits stay separate from Contract changes. Save or reset the route settings in
-                          <strong>Overview</strong> before expecting path or method changes to appear here.
+                          Unsaved <strong>Overview</strong> edits are not applied here yet. Save or reset them first to refresh method/path values in Contract.
                         </v-alert>
 
                         <RouteContractEditor
@@ -2199,7 +2198,7 @@ const activeTitle = computed(() => {
                         </template>
                         <v-card-title>Flow</v-card-title>
                         <v-card-subtitle>
-                          Design the live API data flow here while keeping the public contract in the separate Contract journey.
+                          Build the live route logic with nodes, paths, and connector calls.
                         </v-card-subtitle>
 
                         <template #append>
@@ -2223,20 +2222,47 @@ const activeTitle = computed(() => {
                       <v-divider />
 
                       <v-card-text class="d-flex flex-column ga-4">
-                        <div class="d-flex flex-wrap ga-2">
-                          <v-chip color="primary" label size="small" variant="tonal">
-                            v{{ currentImplementation?.version ?? 1 }}
-                          </v-chip>
-                          <v-chip
-                            :color="currentImplementation?.is_draft === false ? 'accent' : 'warning'"
-                            label
-                            size="small"
-                            variant="tonal"
+                        <div class="d-flex flex-wrap align-center justify-space-between ga-3">
+                          <div class="d-flex flex-wrap ga-2">
+                            <v-chip color="primary" label size="small" variant="tonal">
+                              v{{ currentImplementation?.version ?? 1 }}
+                            </v-chip>
+                            <v-chip
+                              :color="currentImplementation?.is_draft === false ? 'accent' : 'warning'"
+                              label
+                              size="small"
+                              variant="tonal"
+                            >
+                              {{ currentImplementation?.is_draft === false ? "Published base" : "Draft" }}
+                            </v-chip>
+                            <v-chip label size="small" variant="outlined">{{ implementationNodeCount }} nodes</v-chip>
+                            <v-chip label size="small" variant="outlined">{{ implementationEdgeCount }} edges</v-chip>
+                          </div>
+
+                          <div
+                            v-if="!isFlowEditorInFocusMode"
+                            class="d-flex flex-wrap align-center justify-end ga-2 flow-connection-context-row"
+                            data-testid="flow-connection-context"
                           >
-                            {{ currentImplementation?.is_draft === false ? "Published base" : "Draft" }}
-                          </v-chip>
-                          <v-chip label size="small" variant="outlined">{{ implementationNodeCount }} nodes</v-chip>
-                          <v-chip label size="small" variant="outlined">{{ implementationEdgeCount }} edges</v-chip>
+                            <v-chip color="primary" label size="small" variant="tonal">
+                              Scope · {{ routeConnectionScopeLabel }}
+                            </v-chip>
+                            <v-chip label size="small" variant="outlined">
+                              {{ scopedConnectionCount }} in scope
+                            </v-chip>
+                            <v-chip label size="small" variant="outlined">
+                              {{ connections.length }} total
+                            </v-chip>
+                            <v-chip v-if="isLoadingConnections" color="secondary" label size="small" variant="tonal">
+                              Syncing…
+                            </v-chip>
+                            <v-btn prepend-icon="mdi-refresh" size="small" variant="text" @click="refreshConnections">
+                              Refresh
+                            </v-btn>
+                            <v-btn color="primary" prepend-icon="mdi-open-in-new" size="small" variant="tonal" @click="openConnectorsPage">
+                              Open Connectors
+                            </v-btn>
+                          </div>
                         </div>
 
                         <v-skeleton-loader
@@ -2267,45 +2293,6 @@ const activeTitle = computed(() => {
                       </v-card-text>
                     </v-card>
 
-                    <v-card v-if="!isFlowEditorInFocusMode" class="workspace-card">
-                      <v-card-item>
-                        <template #prepend>
-                          <v-avatar color="secondary" variant="tonal">
-                            <v-icon icon="mdi-connection" />
-                          </v-avatar>
-                        </template>
-                        <v-card-title>Connector context</v-card-title>
-                        <v-card-subtitle>
-                          Flow nodes bind saved connectors by id. Manage full connector credentials from the dedicated Connectors page.
-                        </v-card-subtitle>
-
-                        <template #append>
-                          <div class="d-flex flex-wrap justify-end ga-2">
-                            <v-btn prepend-icon="mdi-refresh" variant="text" @click="refreshConnections">Refresh</v-btn>
-                            <v-btn color="primary" prepend-icon="mdi-open-in-new" variant="tonal" @click="openConnectorsPage">
-                              Open Connectors
-                            </v-btn>
-                          </div>
-                        </template>
-                      </v-card-item>
-
-                      <v-divider />
-
-                      <v-card-text class="d-flex flex-wrap ga-2" data-testid="flow-connection-context">
-                        <v-chip color="primary" label size="small" variant="tonal">
-                          Scope · {{ routeConnectionScopeLabel }}
-                        </v-chip>
-                        <v-chip label size="small" variant="outlined">
-                          {{ scopedConnectionCount }} in scope
-                        </v-chip>
-                        <v-chip label size="small" variant="outlined">
-                          {{ connections.length }} total saved
-                        </v-chip>
-                        <v-chip v-if="isLoadingConnections" color="secondary" label size="small" variant="tonal">
-                          Syncing…
-                        </v-chip>
-                      </v-card-text>
-                    </v-card>
                   </template>
 
                   <template v-else-if="activeWorkspaceTab === 'test'">
@@ -2318,7 +2305,7 @@ const activeTitle = computed(() => {
                         </template>
                         <v-card-title>Test</v-card-title>
                         <v-card-subtitle>
-                          Preview the contract output and inspect the most recent live execution attempts.
+                          Compare contract output with live route behavior and recent runs.
                         </v-card-subtitle>
 
                         <template #append>
@@ -2342,40 +2329,33 @@ const activeTitle = computed(() => {
                       <v-divider />
 
                       <v-card-text class="d-flex flex-column ga-4">
-                        <v-row>
-                          <v-col cols="12" md="4">
-                            <v-sheet class="schema-summary-card" rounded="xl">
-                              <div class="text-overline text-medium-emphasis">Contract preview</div>
-                              <div class="text-h6">{{ routeTestState?.previewHeadline ?? "Schema-driven preview" }}</div>
-                              <div class="text-body-2 text-medium-emphasis">
-                                {{ routeTestState?.previewSummary }}
-                              </div>
-                            </v-sheet>
-                          </v-col>
-                          <v-col cols="12" md="4">
-                            <v-sheet class="schema-summary-card" rounded="xl">
-                              <div class="d-flex flex-wrap align-center justify-space-between ga-2">
-                                <div class="text-overline text-medium-emphasis">Live request path</div>
-                                <v-chip
-                                  v-if="routeTestState"
-                                  :color="routeTestState.liveStatusColor"
-                                  label
-                                  size="small"
-                                  variant="tonal"
-                                >
-                                  {{ routeTestState.liveStatusLabel }}
-                                </v-chip>
-                              </div>
-                              <div class="text-h6">{{ routeTestState?.liveHeadline ?? "Live/public request state" }}</div>
-                              <div class="text-body-2 text-medium-emphasis">
-                                {{ routeTestState?.liveSummary }}
-                              </div>
-                            </v-sheet>
-                          </v-col>
-                          <v-col cols="12" md="4">
-                            <v-sheet class="schema-summary-card" rounded="xl">
-                              <div class="d-flex flex-wrap align-center justify-space-between ga-2">
-                                <div class="text-overline text-medium-emphasis">Draft vs live</div>
+                        <v-sheet class="schema-summary-card pa-4" rounded="xl">
+                          <div class="d-flex flex-wrap align-center justify-space-between ga-2">
+                            <div class="text-overline text-medium-emphasis">Route status</div>
+                            <v-chip
+                              v-if="routeTestState"
+                              :color="routeTestState.liveStatusColor"
+                              label
+                              size="small"
+                              variant="tonal"
+                            >
+                              {{ routeTestState.liveStatusLabel }}
+                            </v-chip>
+                          </div>
+                          <div class="text-h6">{{ routeTestState?.liveHeadline ?? "Live route state" }}</div>
+                          <div class="text-body-2 text-medium-emphasis">{{ routeTestState?.liveSummary }}</div>
+
+                          <v-divider class="my-3" />
+
+                          <div class="d-flex flex-wrap align-start ga-5">
+                            <div>
+                              <div class="text-caption text-medium-emphasis">Contract preview</div>
+                              <div class="text-body-1">{{ routeTestState?.previewHeadline ?? "Contract preview" }}</div>
+                              <div class="text-body-2 text-medium-emphasis">{{ routeTestState?.previewSummary }}</div>
+                            </div>
+                            <div>
+                              <div class="text-caption text-medium-emphasis">Draft status</div>
+                              <div class="d-flex flex-wrap align-center ga-2">
                                 <v-chip
                                   v-if="routeTestState"
                                   :color="routeTestState.currentDraftBadgeColor"
@@ -2385,18 +2365,12 @@ const activeTitle = computed(() => {
                                 >
                                   {{ routeTestState.currentDraftBadgeLabel }}
                                 </v-chip>
+                                <span class="text-body-1">{{ routeTestState?.draftHeadline ?? "Current draft" }}</span>
                               </div>
-                              <div class="text-h6">{{ routeTestState?.draftHeadline ?? "Current flow draft" }}</div>
-                              <div class="text-body-2 text-medium-emphasis">
-                                {{ routeTestState?.draftSummary }}
-                              </div>
-                            </v-sheet>
-                          </v-col>
-                        </v-row>
-
-                        <v-alert border="start" color="info" variant="tonal">
-                          The route tester compares an admin-only contract preview with real public requests. Only published live deployments can create execution traces below.
-                        </v-alert>
+                              <div class="text-body-2 text-medium-emphasis mt-1">{{ routeTestState?.draftSummary }}</div>
+                            </div>
+                          </div>
+                        </v-sheet>
 
                         <v-skeleton-loader
                           v-if="isLoadingExecutions"
@@ -2408,9 +2382,6 @@ const activeTitle = computed(() => {
                         </div>
 
                         <div v-else class="d-flex flex-column ga-3">
-                          <div class="text-body-2 text-medium-emphasis">
-                            Execution history only appears for published live implementations. Legacy mock traffic does not write runtime traces here.
-                          </div>
                           <v-sheet
                             v-for="execution in executions"
                             :key="execution.id"
@@ -2590,7 +2561,7 @@ const activeTitle = computed(() => {
                         </template>
                         <v-card-title>Deploy</v-card-title>
                         <v-card-subtitle>
-                          Publish the current flow implementation to the compiled runtime registry or disable the current live binding.
+                          Publish the saved flow to live traffic or turn live traffic off.
                         </v-card-subtitle>
 
                         <template #append>
@@ -2614,7 +2585,7 @@ const activeTitle = computed(() => {
                               prepend-icon="mdi-rocket-launch-outline"
                               @click="publishFlowDeployment"
                             >
-                              Publish to production
+                              Publish live route
                             </v-btn>
                           </div>
                         </template>
@@ -2623,20 +2594,36 @@ const activeTitle = computed(() => {
                       <v-divider />
 
                       <v-card-text class="d-flex flex-column ga-4">
-                        <div class="d-flex flex-wrap ga-3">
-                          <v-sheet class="deployment-summary-card pa-4" rounded="xl">
+                        <v-sheet class="deployment-summary-card pa-4" rounded="xl">
+                          <div class="d-flex flex-wrap align-center justify-space-between ga-2">
                             <div class="text-overline text-medium-emphasis">{{ deploymentStatusTitle }}</div>
-                            <div class="text-h6">{{ deploymentHeadline }}</div>
-                            <div class="text-body-2 text-medium-emphasis">{{ deploymentSummary }}</div>
-                          </v-sheet>
-                          <v-sheet class="deployment-summary-card pa-4" rounded="xl">
-                            <div class="text-overline text-medium-emphasis">Current draft</div>
-                            <div class="text-h6">v{{ currentImplementation?.version ?? 1 }}</div>
-                            <div class="text-body-2 text-medium-emphasis">
-                              {{ currentImplementation?.is_draft === false ? "Already promoted to a live deployment base." : "Still editable." }}
-                            </div>
-                          </v-sheet>
-                        </div>
+                            <v-chip
+                              :color="activeDeployment ? 'accent' : hasDeploymentHistory ? 'warning' : 'secondary'"
+                              label
+                              size="small"
+                              variant="tonal"
+                            >
+                              {{ activeDeployment ? "Live" : hasDeploymentHistory ? "Inactive" : "Not published" }}
+                            </v-chip>
+                          </div>
+                          <div class="text-h6">{{ deploymentHeadline }}</div>
+                          <div class="text-body-2 text-medium-emphasis">{{ deploymentSummary }}</div>
+
+                          <v-divider class="my-3" />
+
+                          <div class="text-caption text-medium-emphasis">Current draft</div>
+                          <div class="d-flex flex-wrap align-center ga-2">
+                            <v-chip
+                              :color="currentImplementation?.is_draft === false ? 'accent' : 'warning'"
+                              label
+                              size="small"
+                              variant="tonal"
+                            >
+                              {{ currentImplementation?.is_draft === false ? "Published base" : "Draft" }}
+                            </v-chip>
+                            <span class="text-body-1">v{{ currentImplementation?.version ?? 1 }}</span>
+                          </div>
+                        </v-sheet>
 
                         <v-skeleton-loader
                           v-if="isLoadingDeployments"
@@ -2644,7 +2631,7 @@ const activeTitle = computed(() => {
                         />
 
                         <div v-else-if="deployments.length === 0" class="text-body-2 text-medium-emphasis">
-                          No deployments yet. Publishing will create the first production binding and warm the compiled route registry.
+                          No deployment history yet. Publish once to make this route live.
                         </div>
 
                         <div v-else class="d-flex flex-column ga-3">
@@ -2842,6 +2829,10 @@ const activeTitle = computed(() => {
 
 .workspace-tabs-card {
   overflow: hidden;
+}
+
+.flow-connection-context-row {
+  min-height: 2rem;
 }
 
 .deployment-summary-card,
