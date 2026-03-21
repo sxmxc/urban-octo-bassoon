@@ -81,7 +81,7 @@ Version maintenance:
 ```sh
 make version
 make version-check
-make set-version VERSION=2.0.0-alpha.2
+make set-version VERSION=2.0.0-alpha.3
 make bump-version PART=prerelease PRE_LABEL=alpha
 ```
 

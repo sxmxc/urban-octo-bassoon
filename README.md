@@ -86,7 +86,6 @@ make clean-prod-local
 - **Live OpenAPI**: `/openapi.json` reflects the active route catalog.
 - **Admin API**: bearer-session admin routes manage endpoint definitions, route implementations, deployments, connections, execution history, and dashboard accounts in Postgres.
 - **Seed catalog**: `make seed` loads 14 sample endpoints for local exploration, including device examples that now use UUID-style `deviceId` values and a curated default model enum.
-- **Admin UI**: Vue + Vuetify route management now includes dedicated sign-in, protected route-first Overview/Contract/Flow/Test/Deploy surfaces, integrated Contract-tab schema authoring, and live previews of generated/public examples.
 - **Admin UI**: Vue + Vuetify route management now includes dedicated sign-in, protected route-first Overview/Contract/Flow/Test/Deploy surfaces, integrated Contract-tab schema authoring, a collapsible route catalog rail for wider editing space, and live previews of generated/public examples.
 - **Schema-driven generation**: response schemas can mix static values, true random generation, and mocking-style random generation per field via internal `x-mock` extensions, with semantic value types like `id`, `name`, `email`, `price`, and `long_text`.
 - **Vuetify AI support**: the frontend uses `@vuetify/v0` for theme/storage helpers and ships with a repo-level Vuetify MCP config.
@@ -126,7 +125,7 @@ Local release/version helpers:
 
 - `make version`
 - `make version-check`
-- `make set-version VERSION=2.0.0-alpha.2`
+- `make set-version VERSION=2.0.0-alpha.3`
 - `make bump-version PART=prerelease PRE_LABEL=alpha`
 
 ## 📁 Repo layout
