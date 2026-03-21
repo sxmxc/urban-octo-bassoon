@@ -4408,9 +4408,14 @@ onBeforeUnmount(() => {
   overflow-x: auto;
   margin: 0;
   padding: 1rem;
-  border-radius: 18px;
-  background: rgba(15, 23, 42, 0.82);
-  color: #f8fafc;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--art-structural-border);
+  background:
+    linear-gradient(180deg, var(--art-shell-overlay), transparent 100%),
+    color-mix(in srgb, rgb(var(--v-theme-surface-bright)) 88%, rgb(var(--v-theme-background)) 12%);
+  box-shadow: var(--art-card-shadow);
+  color: rgb(var(--v-theme-on-surface));
+  font-family: var(--font-mono-primary);
   font-size: 0.78rem;
   line-height: 1.55;
   white-space: pre-wrap;

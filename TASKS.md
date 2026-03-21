@@ -19,6 +19,7 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [ ] (none)
 
 ## Done
+- [x] Apply the new Artificer obsidian-and-neon admin theme, including `artificerDark` / `artificerLight`, the topbar icon-plus-text lockup, and the standalone login wordmark layout
 - [x] Tighten admin-core UI/UX density across login and the route workspace by collapsing wasted connector context, compressing Test/Deploy status blocks, and replacing architecture-heavy helper copy with task-first language
 - [x] Continue improving `Flow` authoring ergonomics for large-context nodes by reducing inspector vertical sprawl now that branch reconnect/remove flows live in shared connected-path cards
 - [x] Keep `Switch` case drag-connect additive so creating a new case branch does not silently replace the first existing case path

@@ -2870,7 +2870,7 @@ const activeTitle = computed(() => {
 }
 
 .flow-json-editor :deep(textarea) {
-  font-family: "JetBrains Mono", "Fira Code", "Source Code Pro", monospace;
+  font-family: var(--font-mono-primary);
   line-height: 1.45;
 }
 
@@ -2878,7 +2878,7 @@ const activeTitle = computed(() => {
   margin: 0;
   overflow-x: auto;
   white-space: pre;
-  font-family: "JetBrains Mono", "Fira Code", "Source Code Pro", monospace;
+  font-family: var(--font-mono-primary);
   font-size: 0.75rem;
   line-height: 1.4;
 }

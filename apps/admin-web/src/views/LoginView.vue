@@ -41,84 +41,84 @@ async function handleSubmit(): Promise<void> {
 <template>
   <v-row class="fill-height align-center" justify="center">
     <v-col cols="12" md="8" lg="6" xl="5">
-      <v-card class="workspace-card">
-        <v-card-item>
-          <template #prepend>
-            <v-avatar color="primary" variant="tonal">
-              <v-icon icon="mdi-lock-outline" />
-            </v-avatar>
-          </template>
+      <div class="auth-login-shell">
+        <div class="auth-login-brand">
+          <img alt="Artificer" class="auth-brand-logo" src="/logo.svg">
+        </div>
 
-          <v-card-title>Sign in to Artificer Studio</v-card-title>
-          <v-card-subtitle>Use your admin account to continue.</v-card-subtitle>
-        </v-card-item>
+        <v-card class="workspace-card">
+          <v-card-item class="auth-card-header">
+            <v-card-title class="auth-card-title">Sign in</v-card-title>
+            <v-card-subtitle class="auth-card-subtitle">Use your admin account to continue.</v-card-subtitle>
+          </v-card-item>
 
-        <v-divider />
+          <v-divider />
 
-        <v-card-text class="d-flex flex-column ga-4">
-          <v-alert
-            v-if="auth.sessionMessage.value"
-            border="start"
-            color="info"
-            variant="tonal"
-            @click:close="auth.clearSessionMessage()"
-          >
-            {{ auth.sessionMessage.value }}
-          </v-alert>
+          <v-card-text class="d-flex flex-column ga-4">
+            <v-alert
+              v-if="auth.sessionMessage.value"
+              border="start"
+              color="info"
+              variant="tonal"
+              @click:close="auth.clearSessionMessage()"
+            >
+              {{ auth.sessionMessage.value }}
+            </v-alert>
 
-          <v-alert v-if="formError" border="start" color="error" variant="tonal">
-            {{ formError }}
-          </v-alert>
+            <v-alert v-if="formError" border="start" color="error" variant="tonal">
+              {{ formError }}
+            </v-alert>
 
-          <v-skeleton-loader
-            v-if="auth.status.value === 'restoring'"
-            type="article, text, text, button"
-          />
-
-          <v-form v-else class="d-flex flex-column ga-4" @submit.prevent="handleSubmit">
-            <v-text-field
-              v-model="credentials.username"
-              autocomplete="username"
-              label="Username"
-              prepend-inner-icon="mdi-account-outline"
+            <v-skeleton-loader
+              v-if="auth.status.value === 'restoring'"
+              type="article, text, text, button"
             />
 
-            <v-text-field
-              v-model="credentials.password"
-              autocomplete="current-password"
-              label="Password"
-              prepend-inner-icon="mdi-form-textbox-password"
-              type="password"
-            />
+            <v-form v-else class="d-flex flex-column ga-4" @submit.prevent="handleSubmit">
+              <v-text-field
+                v-model="credentials.username"
+                autocomplete="username"
+                label="Username"
+                prepend-inner-icon="mdi-account-outline"
+              />
 
-            <v-switch
-              v-model="rememberMe"
-              color="secondary"
-              inset
-              label="Remember this browser"
-            />
+              <v-text-field
+                v-model="credentials.password"
+                autocomplete="current-password"
+                label="Password"
+                prepend-inner-icon="mdi-form-textbox-password"
+                type="password"
+              />
+
+              <v-switch
+                v-model="rememberMe"
+                color="secondary"
+                inset
+                label="Remember this browser"
+              />
+
+              <div class="text-caption text-medium-emphasis">
+                Leave this off on shared devices.
+              </div>
+
+              <v-btn
+                block
+                color="primary"
+                :loading="auth.status.value === 'authenticating'"
+                prepend-icon="mdi-arrow-right-circle-outline"
+                size="large"
+                type="submit"
+              >
+                Sign in
+              </v-btn>
+            </v-form>
 
             <div class="text-caption text-medium-emphasis">
-              Leave this off on shared devices.
+              Need the first bootstrap password? Check the API startup logs.
             </div>
-
-            <v-btn
-              block
-              color="primary"
-              :loading="auth.status.value === 'authenticating'"
-              prepend-icon="mdi-arrow-right-circle-outline"
-              size="large"
-              type="submit"
-            >
-              Sign in
-            </v-btn>
-          </v-form>
-
-          <div class="text-caption text-medium-emphasis">
-            Need the first bootstrap password? Check the API startup logs.
-          </div>
-        </v-card-text>
-      </v-card>
+          </v-card-text>
+        </v-card>
+      </div>
     </v-col>
   </v-row>
 </template>
