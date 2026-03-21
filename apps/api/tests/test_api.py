@@ -2832,6 +2832,73 @@ def test_published_route_with_unsupported_auth_mode_is_blocked_before_runtime_ex
     assert executions_response.json() == []
 
 
+def test_supported_legacy_public_route_wins_over_less_specific_unsupported_auth_match(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    dynamic_response = client.post(
+        "/api/admin/endpoints",
+        json={
+            **_endpoint_payload(name="Dynamic basic route", path="/api/items/{slug}"),
+            "auth_mode": "basic",
+        },
+        headers=headers,
+    )
+    assert dynamic_response.status_code == 201
+
+    concrete_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="Concrete public route", path="/api/items/status"),
+        headers=headers,
+    )
+    assert concrete_response.status_code == 201
+
+    live_response = client.get("/api/items/status")
+    assert live_response.status_code == 200
+    assert live_response.json() == {"status": "ok"}
+
+
+def test_supported_deployed_public_route_wins_over_less_specific_unsupported_auth_match(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    dynamic_response = client.post(
+        "/api/admin/endpoints",
+        json={
+            **_endpoint_payload(name="Dynamic bearer route", path="/api/runtime/{slug}"),
+            "auth_mode": "bearer",
+        },
+        headers=headers,
+    )
+    assert dynamic_response.status_code == 201
+
+    concrete_response = client.post(
+        "/api/admin/endpoints",
+        json=_endpoint_payload(name="Concrete runtime route", path="/api/runtime/status"),
+        headers=headers,
+    )
+    assert concrete_response.status_code == 201
+    endpoint = concrete_response.json()
+
+    update_response = client.put(
+        f"/api/admin/endpoints/{endpoint['id']}/implementation/current",
+        json={"flow_definition": _live_route_flow_definition(body={"status": "supported-live"})},
+        headers=headers,
+    )
+    assert update_response.status_code == 200
+
+    publish_response = client.post(
+        f"/api/admin/endpoints/{endpoint['id']}/deployments/publish",
+        json={"environment": "production"},
+        headers=headers,
+    )
+    assert publish_response.status_code == 201
+
+    live_response = client.get("/api/runtime/status")
+    assert live_response.status_code == 200
+    assert live_response.json() == {"status": "supported-live"}
+
+
 def test_admin_login_throttle_ignores_x_forwarded_for_header(empty_db):
     client = TestClient(app)
 

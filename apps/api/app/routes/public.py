@@ -68,9 +68,36 @@ def _match_path_parameters(request_path: str, pattern: str) -> dict[str, str] | 
     }
 
 
-def _find_matching_endpoint(request_path: str, method: str) -> tuple[MatchedEndpoint | None, dict[str, str]]:
-    with session_scope() as session:
-        endpoints = list_legacy_fallback_endpoints(session, limit=1000)
+def _path_specificity(path: str) -> tuple[int, int, int]:
+    segments = [segment for segment in path.split("/") if segment]
+    static_segments = sum(1 for segment in segments if not (segment.startswith("{") and segment.endswith("}")))
+    dynamic_segments = len(segments) - static_segments
+    return static_segments, -dynamic_segments, len(segments)
+
+
+def _matched_endpoint_from_model(endpoint) -> MatchedEndpoint:
+    return MatchedEndpoint(
+        id=int(endpoint.id or 0),
+        method=endpoint.method,
+        path=endpoint.path,
+        auth_mode=str(endpoint.auth_mode.value if hasattr(endpoint.auth_mode, "value") else endpoint.auth_mode),
+        response_schema=endpoint.response_schema,
+        seed_key=endpoint.seed_key,
+        success_status_code=endpoint.success_status_code,
+        latency_min_ms=endpoint.latency_min_ms,
+        latency_max_ms=endpoint.latency_max_ms,
+        error_rate=endpoint.error_rate,
+    )
+
+
+def _find_best_matching_endpoint(
+    request_path: str,
+    method: str,
+    endpoints,
+) -> tuple[MatchedEndpoint | None, dict[str, str]]:
+    best_match: MatchedEndpoint | None = None
+    best_path_parameters: dict[str, str] = {}
+    best_specificity: tuple[int, int, int] | None = None
 
     for endpoint in endpoints:
         if endpoint.method.upper() != method:
@@ -80,48 +107,30 @@ def _find_matching_endpoint(request_path: str, method: str) -> tuple[MatchedEndp
         if path_parameters is None:
             continue
 
-        return (
-            MatchedEndpoint(
-                id=int(endpoint.id or 0),
-                method=endpoint.method,
-                path=endpoint.path,
-                auth_mode=str(endpoint.auth_mode.value if hasattr(endpoint.auth_mode, "value") else endpoint.auth_mode),
-                response_schema=endpoint.response_schema,
-                seed_key=endpoint.seed_key,
-                success_status_code=endpoint.success_status_code,
-                latency_min_ms=endpoint.latency_min_ms,
-                latency_max_ms=endpoint.latency_max_ms,
-                error_rate=endpoint.error_rate,
-            ),
-            path_parameters,
-        )
+        specificity = _path_specificity(endpoint.path)
+        if best_specificity is not None and specificity <= best_specificity:
+            continue
 
-    return None, {}
+        best_match = _matched_endpoint_from_model(endpoint)
+        best_path_parameters = path_parameters
+        best_specificity = specificity
+
+    return best_match, best_path_parameters
+
+
+def _find_matching_endpoint(request_path: str, method: str) -> tuple[MatchedEndpoint | None, dict[str, str]]:
+    with session_scope() as session:
+        endpoints = list_legacy_fallback_endpoints(session, limit=1000)
+
+    return _find_best_matching_endpoint(request_path, method, endpoints)
 
 
 def _find_unsupported_auth_endpoint(request_path: str, method: str) -> MatchedEndpoint | None:
     with session_scope() as session:
         endpoints = list_unsupported_auth_public_endpoints(session, limit=1000)
 
-    for endpoint in endpoints:
-        if endpoint.method.upper() != method:
-            continue
-        if _match_path_parameters(request_path, endpoint.path) is None:
-            continue
-        return MatchedEndpoint(
-            id=int(endpoint.id or 0),
-            method=endpoint.method,
-            path=endpoint.path,
-            auth_mode=str(endpoint.auth_mode.value if hasattr(endpoint.auth_mode, "value") else endpoint.auth_mode),
-            response_schema=endpoint.response_schema,
-            seed_key=endpoint.seed_key,
-            success_status_code=endpoint.success_status_code,
-            latency_min_ms=endpoint.latency_min_ms,
-            latency_max_ms=endpoint.latency_max_ms,
-            error_rate=endpoint.error_rate,
-        )
-
-    return None
+    match, _ = _find_best_matching_endpoint(request_path, method, endpoints)
+    return match
 
 
 def _pick_response(
@@ -170,22 +179,6 @@ async def catchall(full_path: str, request: Request) -> Response:
     request_body = await _parse_json_request_body(request)
     query_parameters = {key: value for key, value in request.query_params.items()}
 
-    unsupported_auth_match = await run_in_threadpool(_find_unsupported_auth_endpoint, request_path, method)
-    if unsupported_auth_match is not None:
-        return Response(
-            status_code=501,
-            content=json.dumps(
-                {
-                    "error": (
-                        "This route's auth mode is not supported by the public runtime yet. "
-                        "Only auth_mode 'none' is currently supported."
-                    ),
-                    "auth_mode": unsupported_auth_match.auth_mode,
-                }
-            ),
-            media_type="application/json",
-        )
-
     deployed_result = await run_in_threadpool(
         _dispatch_deployed_route,
         request_path,
@@ -203,6 +196,21 @@ async def catchall(full_path: str, request: Request) -> Response:
     match, matched_path_parameters = await run_in_threadpool(_find_matching_endpoint, request_path, method)
 
     if not match:
+        unsupported_auth_match = await run_in_threadpool(_find_unsupported_auth_endpoint, request_path, method)
+        if unsupported_auth_match is not None:
+            return Response(
+                status_code=501,
+                content=json.dumps(
+                    {
+                        "error": (
+                            "This route's auth mode is not supported by the public runtime yet. "
+                            "Only auth_mode 'none' is currently supported."
+                        ),
+                        "auth_mode": unsupported_auth_match.auth_mode,
+                    }
+                ),
+                media_type="application/json",
+            )
         return Response(status_code=404, content=json.dumps({"error": "Not found"}), media_type="application/json")
 
     # Simulate latency
