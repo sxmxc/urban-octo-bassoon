@@ -2,16 +2,28 @@
 
 [![CI](https://github.com/sxmxc/artificer/actions/workflows/ci.yml/badge.svg)](https://github.com/sxmxc/artificer/actions/workflows/ci.yml)
 [![Container Images](https://github.com/sxmxc/artificer/actions/workflows/images.yml/badge.svg)](https://github.com/sxmxc/artificer/actions/workflows/images.yml)
+[![Version](https://img.shields.io/badge/version-2.0.0--alpha.3-22d3ee?style=flat-square&logo=github&logoColor=white)](VERSION)
+[![Docs](https://img.shields.io/badge/docs-roadmap%20%2B%20architecture-8b95a7?style=flat-square&logo=gitbook&logoColor=white)](docs/roadmap.md)
+[![Vue](https://img.shields.io/badge/Vue-3-4FC08D?style=flat-square&logo=vuedotjs&logoColor=white)](https://vuejs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0F766E?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Vuetify](https://img.shields.io/badge/Vuetify-4-1867C0?style=flat-square&logo=vuetify&logoColor=white)](https://vuetifyjs.com/)
 
 Artificer is a Docker-first, route-first API platform for designing, testing, publishing, and operating configurable API routes through a dedicated control plane. The platform is split into Artificer API for the public/runtime surface and Artificer Studio for the private admin experience.
 
 The current system already includes a live public API status page, dynamic OpenAPI, a private admin dashboard, and the first deployment-backed runtime scaffolding for published route implementations. The older schema-driven mock generator still powers previews, examples, and fallback behavior while the live runtime grows into the primary execution path.
 
-## 🧭 Fork Status
+## At A Glance
 
-This repository is now being steered toward:
+| Surface | Purpose | Local URL |
+| --- | --- | --- |
+| `Status` | Public API status page and route reference | `http://localhost:8000/status` |
+| `Studio` | Private admin workspace | `http://localhost:3000` |
+| `OpenAPI` | Published machine contract | `http://localhost:8000/openapi.json` |
+| `Docs` | Developer references and architecture notes | `README.md`, `docs/` |
 
-- a route-first API platform instead of a mock-only editor
+Current direction:
+
+- route-first API platform instead of a mock-only editor
 - explicit `Overview`, `Contract`, `Flow`, `Test`, and `Deploy` workflows
 - deployment-backed runtime execution with publish/unpublish semantics
 - stronger operator tooling around connections, execution traces, and runtime debugging
@@ -75,6 +87,7 @@ make clean-prod-local
 - **Admin API**: bearer-session admin routes manage endpoint definitions, route implementations, deployments, connections, execution history, and dashboard accounts in Postgres.
 - **Seed catalog**: `make seed` loads 14 sample endpoints for local exploration, including device examples that now use UUID-style `deviceId` values and a curated default model enum.
 - **Admin UI**: Vue + Vuetify route management now includes dedicated sign-in, protected route-first Overview/Contract/Flow/Test/Deploy surfaces, integrated Contract-tab schema authoring, and live previews of generated/public examples.
+- **Admin UI**: Vue + Vuetify route management now includes dedicated sign-in, protected route-first Overview/Contract/Flow/Test/Deploy surfaces, integrated Contract-tab schema authoring, a collapsible route catalog rail for wider editing space, and live previews of generated/public examples.
 - **Schema-driven generation**: response schemas can mix static values, true random generation, and mocking-style random generation per field via internal `x-mock` extensions, with semantic value types like `id`, `name`, `email`, `price`, and `long_text`.
 - **Vuetify AI support**: the frontend uses `@vuetify/v0` for theme/storage helpers and ships with a repo-level Vuetify MCP config.
 - **Docker-first**: one command to bring up the full stack without depending on host `node_modules` for the frontend container.
@@ -133,6 +146,7 @@ See `docs/ci-cd.md` for the release workflow, image tag rules, and runtime envir
 - Canonical docs live in this repo: [`README.md`](README.md) and [`docs/`](docs/)
 - The practical user/developer handbook lives in the [GitHub Wiki](https://github.com/sxmxc/artificer/wiki)
 - The implementation handoff / platform direction doc lives in [`docs/roadmap.md`](docs/roadmap.md)
+- The admin UI guide lives in [`docs/admin-ui.md`](docs/admin-ui.md)
 
 ## 🐳 Image-only Compose Example
 

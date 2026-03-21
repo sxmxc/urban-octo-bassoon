@@ -19,6 +19,7 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [ ] (none)
 
 ## Done
+- [x] Refresh the public README and admin UI docs for the Artificer Studio theme/version bump and the collapsible route catalog rail
 - [x] Let selected-route workspaces collapse the `Routes` catalog rail so Contract/Flow/Test/Deploy get more horizontal space while editing
 - [x] Apply the new Artificer obsidian-and-neon admin theme, including `artificerDark` / `artificerLight`, the topbar icon-plus-text lockup, and the standalone login wordmark layout
 - [x] Tighten admin-core UI/UX density across login and the route workspace by collapsing wasted connector context, compressing Test/Deploy status blocks, and replacing architecture-heavy helper copy with task-first language
