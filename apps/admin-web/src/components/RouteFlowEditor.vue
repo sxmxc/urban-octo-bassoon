@@ -112,6 +112,7 @@ type FocusPreviewTableRow = {
   type: string;
   value: string;
 };
+type InspectorGuidanceTone = "info" | "warning";
 const BASE_TRANSFORM_REFERENCE_SNIPPETS = [
   { label: "route.path", value: "route.path" },
   { label: "request.path", value: "request.path" },
@@ -241,6 +242,7 @@ const httpBodyError = ref<string | null>(null);
 const postgresParametersError = ref<string | null>(null);
 const isDesignerJsonOpen = ref<number | undefined>(undefined);
 const focusSignalsOpen = ref<number[]>([]);
+const inspectorSectionsOpen = ref<string[]>([]);
 const flowInstance = ref<VueFlowStore | null>(null);
 const hasManualLayout = ref(false);
 const isFocusMode = ref(false);
@@ -727,6 +729,79 @@ const selectedNodePathManagementCopy = computed(() => {
   }
 
   return "Reconnect or remove outgoing paths directly from this inspector.";
+});
+const selectedNodeGuidance = computed<{ message: string; tone: InspectorGuidanceTone } | null>(() => {
+  const runtimeType = selectedCanvasNode.value?.data.runtimeType;
+  if (!runtimeType) {
+    return null;
+  }
+
+  if (runtimeType === "api_trigger") {
+    return {
+      message: "API Trigger starts each run from the saved method, path, params, and body shape.",
+      tone: "info",
+    };
+  }
+
+  if (runtimeType === "validate_request") {
+    return {
+      message: "Validate Request checks the request against the saved contract.",
+      tone: "info",
+    };
+  }
+
+  if (runtimeType === "if_condition") {
+    return {
+      message: "If checks route data and continues on True or False.",
+      tone: "info",
+    };
+  }
+
+  if (runtimeType === "switch") {
+    return {
+      message: "Switch routes by case value and should include one default path.",
+      tone: "info",
+    };
+  }
+
+  if (runtimeType === "http_request") {
+    return {
+      message: "HTTP Request calls an upstream URL through a saved connection.",
+      tone: "info",
+    };
+  }
+
+  if (runtimeType === "postgres_query") {
+    return {
+      message: "Postgres Query runs one read-only SELECT or WITH statement with named parameters.",
+      tone: "info",
+    };
+  }
+
+  if (runtimeType === "set_response") {
+    return {
+      message: "Set Response returns the final status and body for live traffic.",
+      tone: "info",
+    };
+  }
+
+  return null;
+});
+const selectedNodeHasGuidance = computed(() => Boolean(selectedNodeGuidance.value || selectedNodeInspection.value));
+const selectedNodeDefaultInspectorSections = computed<string[]>(() => {
+  const runtimeType = selectedCanvasNode.value?.data.runtimeType;
+  if (!runtimeType) {
+    return [];
+  }
+
+  const nextSections: string[] = [];
+  if (runtimeType === "if_condition" || runtimeType === "switch" || runtimeType === "api_trigger" || runtimeType === "validate_request") {
+    nextSections.push("paths");
+  }
+  if (runtimeType === "api_trigger" || runtimeType === "validate_request") {
+    nextSections.push("guidance");
+  }
+  return nextSections;
 });
 
 const reconnectTargetOptionsByEdgeId = computed(() => {
@@ -2316,10 +2391,12 @@ watch(
       focusEditorTab.value = "parameters";
       focusInputPreviewMode.value = "schema";
       focusOutputPreviewMode.value = "schema";
+      inspectorSectionsOpen.value = [];
       return;
     }
 
     focusEditorTab.value = "parameters";
+    inspectorSectionsOpen.value = selectedNodeDefaultInspectorSections.value;
   },
   { immediate: true },
 );
@@ -2385,12 +2462,11 @@ onBeforeUnmount(() => {
               {{ isFocusMode ? "Command palette" : "Flow designer" }}
             </div>
             <div class="route-flow-editor__toolbar-title">
-              {{ isFocusMode ? "Add nodes and shape the route graph." : "Design the live API data flow as a node graph." }}
+              {{ isFocusMode ? "Add nodes and shape the route graph." : "Build the route flow on the canvas." }}
             </div>
             <div v-if="!isFocusMode" class="text-body-2 text-medium-emphasis">
-              Keep the single <strong>API Trigger</strong> fixed, then route request data through logic, transforms,
-              connectors, and response nodes. Contract design still lives in the separate <strong>Contract</strong> journey,
-              and deployed traffic returns whatever <strong>Set Response</strong> emits rather than the schema preview sample.
+              Keep <strong>API Trigger</strong> first, connect logic and connector nodes, then finish with
+              <strong>Set Response</strong>.
             </div>
           </div>
 
@@ -2461,9 +2537,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div v-if="!isFocusMode" class="route-flow-editor__toolbar-note">
-          Drag nodes from the palette onto the canvas, or click a palette node while another node is selected to append or
-          connect it. Use the labeled branch ports on <strong>If</strong> and <strong>Switch</strong> to draw True, False,
-          Case, and Default paths directly on the graph.
+          Drag nodes to the canvas, or click a palette node to append from the selected node.
         </div>
       </v-sheet>
 
@@ -2985,9 +3059,9 @@ onBeforeUnmount(() => {
                   {{
                     selectedCanvasNode
                       ? isFocusMode
-                        ? "Edit node parameters and settings here while input/output previews stay pinned on both sides."
-                        : "Edit node parameters and settings here while input/output previews stay visible on both sides."
-                      : "Nodes stay compact on the canvas; editing opens here once you pick the path you want to tune."
+                        ? "Edit node parameters here while input/output previews stay pinned."
+                        : "Edit node parameters here while input/output previews stay visible."
+                      : "Select a node on the canvas to edit it here."
                   }}
                 </div>
               </div>
@@ -3033,19 +3107,14 @@ onBeforeUnmount(() => {
                       <div class="route-flow-editor__panel-eyebrow">Runtime behavior</div>
 
                       <template v-if="selectedCanvasNode.data.runtimeType === 'api_trigger'">
-                        <v-alert class="mt-3" border="start" color="info" variant="tonal">
-                          API Trigger is the request-contract entrypoint. It always starts with the saved route method, path, path/query
-                          parameters, and request body shape from the Contract journey.
-                        </v-alert>
+                        <div class="text-body-2 text-medium-emphasis mt-3">
+                          API Trigger behavior is derived from the saved route contract.
+                        </div>
                       </template>
 
                       <template v-else-if="selectedCanvasNode.data.runtimeType === 'validate_request'">
-                        <v-alert class="mt-3" border="start" color="info" variant="tonal">
-                          Validate Request currently always enforces the saved contract. The future connector/runtime work can make
-                          this richer, but today the backend still treats Contract as the source of truth.
-                        </v-alert>
                         <v-text-field
-                          class="mt-4"
+                          class="mt-3"
                           label="Body mode"
                           :model-value="String(selectedCanvasNode.data.config.body_mode ?? 'contract')"
                           readonly
@@ -3099,11 +3168,6 @@ onBeforeUnmount(() => {
                       </template>
 
                       <template v-else-if="selectedCanvasNode.data.runtimeType === 'if_condition'">
-                        <v-alert class="mt-3" border="start" color="info" variant="tonal">
-                          If evaluates the current route data and sends execution down a <code>True</code> or <code>False</code>
-                          path. Use refs to compare request values or earlier node output.
-                        </v-alert>
-
                         <div class="route-flow-editor__snippet-row mt-3">
                           <span class="text-caption text-medium-emphasis">Quick refs</span>
                           <div class="d-flex flex-wrap ga-2">
@@ -3152,19 +3216,9 @@ onBeforeUnmount(() => {
                           :model-value="ifRightText"
                           @update:model-value="handleIfRightInput(String($event ?? ''))"
                         />
-
-                        <div class="text-caption text-medium-emphasis mt-3">
-                          Drag from the <strong>True</strong> and <strong>False</strong> ports on the node, or use the
-                          <strong>Connected paths</strong> cards below to reconnect and relabel existing branches.
-                        </div>
                       </template>
 
                       <template v-else-if="selectedCanvasNode.data.runtimeType === 'switch'">
-                        <v-alert class="mt-3" border="start" color="info" variant="tonal">
-                          Switch picks a case based on the current route data. Give it one or more <code>Case</code> paths and
-                          exactly one <code>Default</code> path.
-                        </v-alert>
-
                         <div class="route-flow-editor__snippet-row mt-3">
                           <span class="text-caption text-medium-emphasis">Quick refs</span>
                           <div class="d-flex flex-wrap ga-2">
@@ -3193,11 +3247,6 @@ onBeforeUnmount(() => {
                           :model-value="switchValueText"
                           @update:model-value="handleSwitchValueInput(String($event ?? ''))"
                         />
-
-                        <div class="text-caption text-medium-emphasis mt-3">
-                          Drag from the <strong>Case</strong> or <strong>Default</strong> ports on the node, then use the
-                          <strong>Connected paths</strong> cards below to adjust branch mode, case value, or target node.
-                        </div>
                       </template>
 
                       <template v-else-if="selectedCanvasNode.data.runtimeType === 'http_request'">
@@ -3309,21 +3358,12 @@ onBeforeUnmount(() => {
                           />
                         </div>
 
-                        <v-alert class="mt-3" border="start" color="info" density="compact" variant="tonal">
-                          HTTP Request calls an upstream URL through a saved shared connection. Path templates accept inline refs
-                          like <code v-pre>{{request.path.deviceId}}</code>.
-                        </v-alert>
                       </template>
 
                       <template v-else-if="selectedCanvasNode.data.runtimeType === 'postgres_query'">
-                        <v-alert class="mt-3" border="start" color="info" variant="tonal">
-                          Postgres Query is limited to a single read-only <code>SELECT</code> or <code>WITH</code> statement and
-                          uses named parameters instead of raw string interpolation.
-                        </v-alert>
-
                         <v-select
                           v-model="selectedNodeConnectionId"
-                          class="mt-4"
+                          class="mt-3"
                           :items="postgresConnectionOptions"
                           clearable
                           label="Postgres connection"
@@ -3364,11 +3404,6 @@ onBeforeUnmount(() => {
 
                       <template v-else-if="selectedCanvasNode.data.runtimeType === 'set_response'">
                         <v-text-field v-model="selectedNodeStatusCode" class="mt-3" label="Status code" />
-
-                        <v-alert class="mt-3" border="start" color="info" variant="tonal">
-                          Set Response is the live exit node. Public deploys return this node's body, so it should stay aligned with the
-                          response contract saved in <strong>Contract</strong>.
-                        </v-alert>
 
                         <div class="route-flow-editor__snippet-row">
                           <span class="text-caption text-medium-emphasis">Quick refs</span>
@@ -3453,129 +3488,153 @@ onBeforeUnmount(() => {
                         </div>
                       </template>
 
-                      <template v-if="selectedNodeInspection">
-                        <v-alert
-                          class="mt-3"
-                          border="start"
-                          :color="selectedNodeInspection.boundaryTone"
-                          density="comfortable"
-                          variant="tonal"
-                        >
-                          {{ selectedNodeInspection.boundaryMessage }}
-                        </v-alert>
+                      <v-expansion-panels
+                        v-model="inspectorSectionsOpen"
+                        class="route-flow-editor__json-panel route-flow-editor__json-panel--focus mt-4"
+                        multiple
+                        variant="accordion"
+                      >
+                        <v-expansion-panel v-if="selectedNodeHasGuidance" value="guidance" elevation="0">
+                          <v-expansion-panel-title>Flow guidance</v-expansion-panel-title>
+                          <v-expansion-panel-text>
+                            <v-alert
+                              v-if="selectedNodeGuidance"
+                              border="start"
+                              :color="selectedNodeGuidance.tone"
+                              density="comfortable"
+                              variant="tonal"
+                            >
+                              {{ selectedNodeGuidance.message }}
+                            </v-alert>
 
-                        <v-alert
-                          v-if="selectedNodeInspection.unresolvedRefs.length > 0"
-                          class="mt-3"
-                          border="start"
-                          color="warning"
-                          density="comfortable"
-                          variant="tonal"
-                        >
-                          Some refs do not resolve in the current sample context yet:
-                          {{ selectedNodeInspection.unresolvedRefs.join(", ") }}
-                        </v-alert>
-
-                        <v-alert
-                          v-for="note in selectedNodeInspection.notes"
-                          :key="note"
-                          class="mt-3"
-                          border="start"
-                          color="info"
-                          density="comfortable"
-                          variant="tonal"
-                        >
-                          {{ note }}
-                        </v-alert>
-                      </template>
-
-                      <div class="route-flow-editor__snippet-row mt-4">
-                        <span class="text-caption text-medium-emphasis">Connected paths</span>
-                        <div class="text-caption text-medium-emphasis mt-2">
-                          {{ selectedNodePathManagementCopy }}
-                        </div>
-                        <div v-if="selectedNodeOutgoingConnections.length === 0" class="text-caption text-medium-emphasis mt-2">
-                          This node currently has no outgoing paths.
-                        </div>
-                        <div v-else class="d-flex flex-column ga-2 mt-2">
-                          <div
-                            v-for="connection in selectedNodeOutgoingConnections"
-                            :key="`manage-${connection.id}`"
-                            class="route-flow-editor__path-card"
-                          >
-                            <div class="route-flow-editor__path-card-head">
-                              <div class="text-body-2">
-                                <strong>{{ connection.sourceLabel }}</strong>
-                                <span v-if="connection.label" class="text-medium-emphasis"> via {{ connection.label }}</span>
-                                <span class="text-medium-emphasis"> to </span>
-                                <strong>{{ connection.targetLabel }}</strong>
-                              </div>
-                              <v-btn
-                                color="error"
-                                prepend-icon="mdi-link-variant-remove"
-                                size="small"
-                                variant="text"
-                                @click="removeConnection(connection.id)"
+                            <template v-if="selectedNodeInspection">
+                              <v-alert
+                                class="mt-3"
+                                border="start"
+                                :color="selectedNodeInspection.boundaryTone"
+                                density="comfortable"
+                                variant="tonal"
                               >
-                                Remove path
-                              </v-btn>
-                            </div>
+                                {{ selectedNodeInspection.boundaryMessage }}
+                              </v-alert>
 
-                            <div class="route-flow-editor__path-targets">
-                              <span class="text-caption text-medium-emphasis">Next node</span>
-                              <v-menu location="bottom start">
-                                <template #activator="{ props: menuProps }">
-                                  <v-btn
-                                    v-bind="menuProps"
-                                    class="route-flow-editor__path-target-button"
-                                    variant="outlined"
-                                  >
-                                    {{ connection.targetLabel }}
-                                  </v-btn>
-                                </template>
-                                <v-list density="compact">
-                                  <v-list-item
-                                    v-for="target in reconnectTargetOptionsByEdgeId.get(connection.id) ?? []"
-                                    :key="`${connection.id}-target-${target.value}`"
-                                    :active="target.value === connection.targetId"
-                                    :title="target.title"
-                                    @click="reconnectConnection(connection.id, target.value)"
-                                  />
-                                </v-list>
-                              </v-menu>
-                            </div>
+                              <v-alert
+                                v-if="selectedNodeInspection.unresolvedRefs.length > 0"
+                                class="mt-3"
+                                border="start"
+                                color="warning"
+                                density="comfortable"
+                                variant="tonal"
+                              >
+                                Some refs do not resolve in the current sample context yet:
+                                {{ selectedNodeInspection.unresolvedRefs.join(", ") }}
+                              </v-alert>
 
-                            <v-select
-                              v-if="selectedCanvasNode.data.runtimeType === 'if_condition'"
-                              :items="IF_BRANCH_OPTIONS"
-                              item-title="title"
-                              item-value="value"
-                              label="Branch"
-                              :model-value="connection.branch"
-                              :menu-props="FOCUS_SELECT_MENU_PROPS"
-                              @update:model-value="updateIfBranchForEdge(connection.id, String($event ?? ''))"
-                            />
-
-                            <template v-else-if="selectedCanvasNode.data.runtimeType === 'switch'">
-                              <v-select
-                                :items="SWITCH_BRANCH_OPTIONS"
-                                item-title="title"
-                                item-value="value"
-                                label="Path type"
-                                :model-value="connection.branch"
-                                :menu-props="FOCUS_SELECT_MENU_PROPS"
-                                @update:model-value="updateSwitchBranchMode(connection.id, String($event ?? ''))"
-                              />
-                              <v-text-field
-                                v-if="connection.branch === 'case'"
-                                label="Case value"
-                                :model-value="stringifyFlexibleValue(connection.caseValue)"
-                                @update:model-value="updateSwitchCaseValue(connection.id, String($event ?? ''))"
-                              />
+                              <v-alert
+                                v-for="note in selectedNodeInspection.notes"
+                                :key="note"
+                                class="mt-3"
+                                border="start"
+                                color="info"
+                                density="comfortable"
+                                variant="tonal"
+                              >
+                                {{ note }}
+                              </v-alert>
                             </template>
-                          </div>
-                        </div>
-                      </div>
+                          </v-expansion-panel-text>
+                        </v-expansion-panel>
+
+                        <v-expansion-panel value="paths" elevation="0">
+                          <v-expansion-panel-title>Connected paths</v-expansion-panel-title>
+                          <v-expansion-panel-text>
+                            <div class="text-caption text-medium-emphasis">
+                              {{ selectedNodePathManagementCopy }}
+                            </div>
+                            <div v-if="selectedNodeOutgoingConnections.length === 0" class="text-caption text-medium-emphasis mt-2">
+                              This node currently has no outgoing paths.
+                            </div>
+                            <div v-else class="d-flex flex-column ga-2 mt-2">
+                              <div
+                                v-for="connection in selectedNodeOutgoingConnections"
+                                :key="`manage-${connection.id}`"
+                                class="route-flow-editor__path-card"
+                              >
+                                <div class="route-flow-editor__path-card-head">
+                                  <div class="text-body-2">
+                                    <strong>{{ connection.sourceLabel }}</strong>
+                                    <span v-if="connection.label" class="text-medium-emphasis"> via {{ connection.label }}</span>
+                                    <span class="text-medium-emphasis"> to </span>
+                                    <strong>{{ connection.targetLabel }}</strong>
+                                  </div>
+                                  <v-btn
+                                    color="error"
+                                    prepend-icon="mdi-link-variant-remove"
+                                    size="small"
+                                    variant="text"
+                                    @click="removeConnection(connection.id)"
+                                  >
+                                    Remove path
+                                  </v-btn>
+                                </div>
+
+                                <div class="route-flow-editor__path-targets">
+                                  <span class="text-caption text-medium-emphasis">Next node</span>
+                                  <v-menu location="bottom start">
+                                    <template #activator="{ props: menuProps }">
+                                      <v-btn
+                                        v-bind="menuProps"
+                                        class="route-flow-editor__path-target-button"
+                                        variant="outlined"
+                                      >
+                                        {{ connection.targetLabel }}
+                                      </v-btn>
+                                    </template>
+                                    <v-list density="compact">
+                                      <v-list-item
+                                        v-for="target in reconnectTargetOptionsByEdgeId.get(connection.id) ?? []"
+                                        :key="`${connection.id}-target-${target.value}`"
+                                        :active="target.value === connection.targetId"
+                                        :title="target.title"
+                                        @click="reconnectConnection(connection.id, target.value)"
+                                      />
+                                    </v-list>
+                                  </v-menu>
+                                </div>
+
+                                <v-select
+                                  v-if="selectedCanvasNode.data.runtimeType === 'if_condition'"
+                                  :items="IF_BRANCH_OPTIONS"
+                                  item-title="title"
+                                  item-value="value"
+                                  label="Branch"
+                                  :model-value="connection.branch"
+                                  :menu-props="FOCUS_SELECT_MENU_PROPS"
+                                  @update:model-value="updateIfBranchForEdge(connection.id, String($event ?? ''))"
+                                />
+
+                                <template v-else-if="selectedCanvasNode.data.runtimeType === 'switch'">
+                                  <v-select
+                                    :items="SWITCH_BRANCH_OPTIONS"
+                                    item-title="title"
+                                    item-value="value"
+                                    label="Path type"
+                                    :model-value="connection.branch"
+                                    :menu-props="FOCUS_SELECT_MENU_PROPS"
+                                    @update:model-value="updateSwitchBranchMode(connection.id, String($event ?? ''))"
+                                  />
+                                  <v-text-field
+                                    v-if="connection.branch === 'case'"
+                                    label="Case value"
+                                    :model-value="stringifyFlexibleValue(connection.caseValue)"
+                                    @update:model-value="updateSwitchCaseValue(connection.id, String($event ?? ''))"
+                                  />
+                                </template>
+                              </div>
+                            </div>
+                          </v-expansion-panel-text>
+                        </v-expansion-panel>
+                      </v-expansion-panels>
                     </v-sheet>
                   </div>
                 </v-col>
@@ -4349,9 +4408,14 @@ onBeforeUnmount(() => {
   overflow-x: auto;
   margin: 0;
   padding: 1rem;
-  border-radius: 18px;
-  background: rgba(15, 23, 42, 0.82);
-  color: #f8fafc;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--art-structural-border);
+  background:
+    linear-gradient(180deg, var(--art-shell-overlay), transparent 100%),
+    color-mix(in srgb, rgb(var(--v-theme-surface-bright)) 88%, rgb(var(--v-theme-background)) 12%);
+  box-shadow: var(--art-card-shadow);
+  color: rgb(var(--v-theme-on-surface));
+  font-family: var(--font-mono-primary);
   font-size: 0.78rem;
   line-height: 1.55;
   white-space: pre-wrap;

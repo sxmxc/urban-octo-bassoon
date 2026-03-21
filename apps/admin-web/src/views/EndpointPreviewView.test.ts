@@ -236,7 +236,7 @@ describe("EndpointPreviewView", () => {
     await flushPromises();
 
     expect(screen.getByText("Compare admin-only contract previews with live/public request results for this route.")).toBeInTheDocument();
-    expect(screen.getByText("Schema-driven contract preview")).toBeInTheDocument();
+    expect(screen.getAllByText("Contract preview").length).toBeGreaterThan(0);
     expect(screen.getByText("Implementation 4 is live")).toBeInTheDocument();
     expect(screen.getByText("Draft v3 is ahead of live")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Request preview" })).toBeInTheDocument();
@@ -398,7 +398,7 @@ describe("EndpointPreviewView", () => {
     expect(screen.getAllByText("Draft only").length).toBeGreaterThan(0);
     expect(
       screen.getAllByText(
-        "This route has a saved flow draft but no active deployment. Live/public requests return 404 until you publish a flow implementation.",
+        "A draft is saved, but no deployment is active. Live requests return 404 until publish.",
       ).length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("Draft v2 is saved")).toBeInTheDocument();

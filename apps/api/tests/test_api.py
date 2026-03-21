@@ -2206,8 +2206,8 @@ def test_public_status_page_reference_and_brand_asset(seeded_db):
     assert "Dependency health" in status_page.text
     assert "/api/reference.json" in status_page.text
     assert "/openapi.json" in status_page.text
-    assert "Published routes right now." in status_page.text
-    assert "Checked dependency by dependency." in status_page.text
+    assert "Published routes." in status_page.text
+    assert "Dependency checks." in status_page.text
     assert "reference-table-body" in status_page.text
     assert "payload-popover" in status_page.text
     assert "payload-popover-request-section" in status_page.text
@@ -2379,6 +2379,8 @@ def test_security_headers_are_present_on_public_and_api_responses(seeded_db):
     assert status_page.headers["referrer-policy"] == "strict-origin-when-cross-origin"
     assert "content-security-policy" in status_page.headers
     assert "https://cdn.jsdelivr.net" in status_page.headers["content-security-policy"]
+    assert "https://fonts.googleapis.com" in status_page.headers["content-security-policy"]
+    assert "https://fonts.gstatic.com" in status_page.headers["content-security-policy"]
 
     docs_page = client.get("/docs")
     assert docs_page.status_code == 200

@@ -4,7 +4,6 @@ This file tracks the work needed to bootstrap and evolve the project.
 Read `docs/roadmap.md` alongside this file if you are picking up the next implementation slice.
 
 ## Now
-- [ ] Continue improving `Flow` authoring ergonomics for large-context nodes by reducing inspector vertical sprawl now that branch reconnect/remove flows live in shared connected-path cards
 
 ## Next
 - [ ] Add advanced inbound auth (API keys, bearer token policies, scopes)
@@ -20,6 +19,12 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [ ] (none)
 
 ## Done
+- [x] Refresh the backend-served `/status` shell to the current Artificer obsidian-and-neon branding, including corrected icon scaling, an icon-only theme toggle, tighter copy, and the shared icon asset
+- [x] Refresh the public README and admin UI docs for the Artificer Studio theme/version bump and the collapsible route catalog rail
+- [x] Let selected-route workspaces collapse the `Routes` catalog rail so Contract/Flow/Test/Deploy get more horizontal space while editing
+- [x] Apply the new Artificer obsidian-and-neon admin theme, including `artificerDark` / `artificerLight`, the topbar icon-plus-text lockup, and the standalone login wordmark layout
+- [x] Tighten admin-core UI/UX density across login and the route workspace by collapsing wasted connector context, compressing Test/Deploy status blocks, and replacing architecture-heavy helper copy with task-first language
+- [x] Continue improving `Flow` authoring ergonomics for large-context nodes by reducing inspector vertical sprawl now that branch reconnect/remove flows live in shared connected-path cards
 - [x] Keep `Switch` case drag-connect additive so creating a new case branch does not silently replace the first existing case path
 - [x] Make Flow-canvas rewiring feel direct by replacing occupied outgoing paths on drag-connect, supporting target-side edge-update rewires, and giving node categories distinct visual shapes
 - [x] Consolidate `Flow` branch editing into shared connected-path cards with in-place reconnect/remove controls in both standard and focus inspectors

@@ -360,7 +360,7 @@ watch(
 
 .catalog-item-path {
   min-width: 0;
-  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+  font-family: var(--font-mono-primary);
 }
 
 .catalog-item-category {

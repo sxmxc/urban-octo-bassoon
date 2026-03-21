@@ -36,7 +36,7 @@ For this repo, that resolves to:
   - `make version`
   - `make version-check`
   - `make version-sync`
-  - `make set-version VERSION=2.0.0-alpha.2`
+  - `make set-version VERSION=2.0.0-alpha.3`
   - `make bump-version PART=prerelease PRE_LABEL=alpha`
 - `python3 scripts/versioning.py` keeps `VERSION`, the admin package manifests, the API default `APP_VERSION`, and both runtime Dockerfiles in sync.
 - CI now fails if any of those version consumers drift from `VERSION`.

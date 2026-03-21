@@ -43,6 +43,12 @@ STATUS_TEMPLATE = """
       content="Artificer API status, current public route availability, and live reference data."
     />
     <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@500;600;700&display=swap"
+    />
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css"
@@ -52,54 +58,67 @@ STATUS_TEMPLATE = """
         try {
           const storageKey = "artificer-api-public-theme";
           const storedTheme = window.localStorage.getItem(storageKey);
-          const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-          document.documentElement.dataset.theme = storedTheme || (prefersDark ? "dark" : "light");
+          document.documentElement.dataset.theme = storedTheme || "dark";
         } catch (error) {
-          document.documentElement.dataset.theme = "light";
+          document.documentElement.dataset.theme = "dark";
         }
       })();
     </script>
     <style>
       :root {
         color-scheme: light dark;
-        --bg: #f6f0e4;
-        --bg-strong: #f1e8d9;
-        --surface: rgba(255, 251, 245, 0.78);
-        --surface-solid: #fffaf2;
-        --surface-soft: rgba(255, 255, 255, 0.56);
-        --text: #17202b;
-        --muted: #5d6976;
-        --line: rgba(28, 40, 53, 0.12);
-        --line-strong: rgba(28, 40, 53, 0.18);
-        --primary: #1f5f7f;
-        --primary-strong: #184d67;
-        --secondary: #c76f35;
-        --accent: #2f8c7d;
-        --shadow: 0 32px 90px rgba(28, 40, 53, 0.14);
-        --radius-xl: 34px;
-        --radius-lg: 24px;
-        --radius-md: 18px;
+        --bg: #f8fafc;
+        --bg-strong: #f1f5f9;
+        --surface: rgba(255, 255, 255, 0.92);
+        --surface-solid: #ffffff;
+        --surface-soft: rgba(241, 245, 249, 0.92);
+        --text: #0f172a;
+        --muted: #64748b;
+        --line: #d1d5db;
+        --line-strong: #cbd5e1;
+        --primary: #0891b2;
+        --primary-strong: #0e7490;
+        --primary-contrast: #f8fafc;
+        --secondary: #64748b;
+        --accent: #22d3ee;
+        --success: #16a34a;
+        --warning: #d97706;
+        --error: #dc2626;
+        --shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+        --shadow-panel: 0 8px 24px rgba(15, 23, 42, 0.08);
+        --radius-xl: 12px;
+        --radius-lg: 10px;
+        --radius-md: 8px;
+        --radius-sm: 6px;
         --page-width: min(1380px, calc(100vw - 40px));
         --content-width: min(1180px, calc(100vw - 40px));
         --topbar-height: 82px;
+        --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        --font-display: "Sora", "Inter", system-ui, sans-serif;
+        --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
       }
 
       [data-theme="dark"] {
         color-scheme: dark;
-        --bg: #0d141b;
-        --bg-strong: #12202c;
-        --surface: rgba(12, 18, 26, 0.76);
-        --surface-solid: #101821;
-        --surface-soft: rgba(17, 25, 34, 0.64);
-        --text: #edf3fb;
-        --muted: #a3b2c2;
-        --line: rgba(232, 241, 251, 0.11);
-        --line-strong: rgba(232, 241, 251, 0.18);
-        --primary: #4ba7d4;
-        --primary-strong: #8fd2ef;
-        --secondary: #f0a35e;
-        --accent: #63c7b7;
-        --shadow: 0 32px 90px rgba(0, 0, 0, 0.34);
+        --bg: #0a0e12;
+        --bg-strong: #111827;
+        --surface: rgba(17, 24, 39, 0.92);
+        --surface-solid: #111827;
+        --surface-soft: rgba(31, 41, 51, 0.92);
+        --text: #f3f4f6;
+        --muted: #a3adbd;
+        --line: #2a3442;
+        --line-strong: #364152;
+        --primary: #22d3ee;
+        --primary-strong: #06b6d4;
+        --primary-contrast: #0a0e12;
+        --secondary: #8b95a7;
+        --accent: #67e8f9;
+        --success: #22c55e;
+        --warning: #f59e0b;
+        --error: #ef4444;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+        --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.45);
       }
 
       * {
@@ -113,19 +132,19 @@ STATUS_TEMPLATE = """
 
       body {
         margin: 0;
-        font-family: "Avenir Next", "Trebuchet MS", sans-serif;
+        font-family: var(--font-ui);
         color: var(--text);
         background:
-          radial-gradient(circle at top left, rgba(192, 217, 236, 0.42), transparent 28%),
-          radial-gradient(circle at top right, rgba(255, 214, 177, 0.48), transparent 24%),
-          linear-gradient(180deg, #fbf8f2 0%, #f2ebdf 48%, #efe4d5 100%);
+          radial-gradient(circle at top left, rgba(8, 145, 178, 0.08), transparent 24%),
+          radial-gradient(circle at top right, rgba(34, 211, 238, 0.06), transparent 20%),
+          linear-gradient(180deg, var(--bg) 0%, var(--bg-strong) 100%);
       }
 
       [data-theme="dark"] body {
         background:
-          radial-gradient(circle at top left, rgba(55, 112, 146, 0.18), transparent 24%),
-          radial-gradient(circle at top right, rgba(240, 163, 94, 0.16), transparent 22%),
-          linear-gradient(180deg, #0b1118 0%, #101922 48%, #0f1720 100%);
+          radial-gradient(circle at top left, rgba(34, 211, 238, 0.14), transparent 24%),
+          radial-gradient(circle at top right, rgba(103, 232, 249, 0.08), transparent 22%),
+          linear-gradient(180deg, var(--bg) 0%, var(--bg-strong) 100%);
       }
 
       img {
@@ -142,6 +161,23 @@ STATUS_TEMPLATE = """
         font: inherit;
       }
 
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      code,
+      pre {
+        font-family: var(--font-mono);
+      }
+
       .site-shell {
         min-height: 100vh;
       }
@@ -153,7 +189,7 @@ STATUS_TEMPLATE = """
         right: 0;
         z-index: 40;
         backdrop-filter: blur(18px);
-        background: rgba(246, 240, 228, 0.74);
+        background: rgba(248, 250, 252, 0.88);
         border-bottom: 1px solid var(--line);
       }
 
@@ -182,50 +218,90 @@ STATUS_TEMPLATE = """
       }
 
       .brand-mark {
-        width: 48px;
-        height: 48px;
-        border-radius: 16px;
-        background: linear-gradient(135deg, rgba(31, 95, 127, 0.12), rgba(199, 111, 53, 0.18));
+        width: 64px;
+        height: 64px;
+        border-radius: 10px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         overflow: hidden;
-        box-shadow: inset 0 0 0 1px rgba(28, 40, 53, 0.08);
       }
 
       .brand-mark img {
-        width: 84%;
-        height: 84%;
+        width: 100%;
+        height: 100%;
+        max-height: none;
         object-fit: contain;
       }
 
       .brand-kicker,
       .eyebrow {
-        font-size: 0.76rem;
-        font-weight: 800;
-        letter-spacing: 0.18em;
+        font-size: 0.74rem;
+        font-weight: 700;
+        letter-spacing: 0.16em;
         text-transform: uppercase;
-        color: var(--secondary);
+        color: var(--primary);
       }
 
       .brand-title,
       .hero-title,
       .section-title {
-        font-family: Georgia, "Times New Roman", serif;
+        font-family: var(--font-display);
         letter-spacing: -0.03em;
       }
 
       .brand-title {
-        font-size: 1.55rem;
-        line-height: 0.96;
+        display: block;
+        font-size: 1.45rem;
+        line-height: 1;
+        font-weight: 700;
+      }
+
+      .brand-kicker {
+        display: inline-flex;
+        align-items: center;
+        margin-top: 0.35rem;
+        padding: 0.18rem 0.5rem;
+        border-radius: 999px;
+        border: 1px solid var(--line-strong);
+        background: var(--surface-soft);
       }
 
       .topbar-actions {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: 10px;
         flex-wrap: wrap;
         justify-content: flex-end;
+      }
+
+      .topbar-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .topbar .buttons {
+        margin: 0;
+        gap: 8px;
+        padding: 4px;
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--line);
+        background: var(--surface);
+      }
+
+      .topbar-toggle {
+        width: 48px;
+        min-width: 48px;
+        min-height: 48px;
+        padding: 0;
+        border-radius: var(--radius-sm);
+      }
+
+      .topbar .buttons .button {
+        margin: 0;
       }
 
       .topbar-links {
@@ -242,40 +318,76 @@ STATUS_TEMPLATE = """
         align-items: center;
         justify-content: center;
         gap: 10px;
-        padding: 0.86rem 1.18rem;
-        border-radius: 999px;
-        font-weight: 700;
-        transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+        min-height: 40px;
+        padding: 0 0.95rem;
+        border-radius: var(--radius-sm);
+        font-weight: 600;
+        font-size: 0.95rem;
+        letter-spacing: -0.01em;
+        line-height: 1;
+        transition: transform 120ms ease-out, box-shadow 120ms ease-out, border-color 120ms ease-out, background 120ms ease-out;
       }
 
       .nav-link {
-        background: rgba(255, 255, 255, 0.52);
+        background: rgba(255, 255, 255, 0);
         border: 1px solid var(--line);
         color: var(--text);
+      }
+
+      .nav-link.topbar-utility {
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.02);
+        font-size: 0.88rem;
       }
 
       .theme-toggle {
         cursor: pointer;
         color: inherit;
+        position: relative;
+      }
+
+      .theme-toggle .theme-icon {
+        width: 20px;
+        height: 20px;
+        display: block;
+      }
+
+      .theme-toggle .theme-icon-sun {
+        display: none;
+      }
+
+      .theme-toggle[aria-pressed="false"] .theme-icon-sun {
+        display: block;
+      }
+
+      .theme-toggle[aria-pressed="false"] .theme-icon-moon {
+        display: none;
       }
 
       .hero-link {
-        background: linear-gradient(135deg, var(--primary), #2f86af);
-        color: white;
-        box-shadow: 0 20px 40px rgba(31, 95, 127, 0.24);
+        background: var(--primary);
+        border: 1px solid rgba(34, 211, 238, 0.24);
+        color: var(--primary-contrast);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
       }
 
       [data-theme="dark"] .topbar {
-        background: rgba(9, 14, 20, 0.74);
+        background: rgba(10, 14, 18, 0.88);
       }
 
-      [data-theme="dark"] .brand-mark {
-        background: linear-gradient(135deg, rgba(75, 167, 212, 0.18), rgba(240, 163, 94, 0.16));
-        box-shadow: inset 0 0 0 1px rgba(232, 241, 251, 0.08);
+      [data-theme="dark"] .topbar .buttons {
+        background: rgba(17, 24, 39, 0.9);
+        border-color: var(--line-strong);
       }
 
       [data-theme="dark"] .nav-link {
-        background: rgba(255, 255, 255, 0.04);
+        background: rgba(255, 255, 255, 0.02);
+        border-color: var(--line-strong);
+      }
+
+      [data-theme="dark"] .nav-link.topbar-utility {
+        color: var(--secondary);
+        background: rgba(255, 255, 255, 0.01);
       }
 
       .topbar .navbar-burger {
@@ -291,6 +403,17 @@ STATUS_TEMPLATE = """
       .nav-link:hover,
       .hero-link:hover {
         transform: translateY(-1px);
+        border-color: var(--line-strong);
+        box-shadow: var(--shadow-panel);
+      }
+
+      .nav-link:hover {
+        background: var(--surface-soft);
+      }
+
+      .hero-link:hover {
+        background: var(--primary-strong);
+        border-color: rgba(103, 232, 249, 0.28);
       }
 
       .hero-shell {
@@ -412,25 +535,25 @@ STATUS_TEMPLATE = """
         place-items: center;
         padding: 40px;
         background:
-          radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.76), transparent 18%),
-          radial-gradient(circle at 78% 24%, rgba(255, 255, 255, 0.62), transparent 20%),
-          linear-gradient(180deg, rgba(210, 223, 235, 0.86), rgba(255, 249, 244, 0.96) 48%, rgba(242, 231, 217, 0.98));
+          radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.88), transparent 18%),
+          radial-gradient(circle at 78% 24%, rgba(34, 211, 238, 0.08), transparent 20%),
+          linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(241, 245, 249, 0.98));
       }
 
       [data-theme="dark"] .hero-placeholder {
         background:
-          radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.18), transparent 18%),
-          radial-gradient(circle at 78% 24%, rgba(255, 255, 255, 0.12), transparent 20%),
-          linear-gradient(180deg, rgba(15, 29, 40, 0.92), rgba(9, 15, 22, 0.98) 48%, rgba(10, 18, 25, 0.98));
+          radial-gradient(circle at 18% 20%, rgba(103, 232, 249, 0.16), transparent 18%),
+          radial-gradient(circle at 78% 24%, rgba(255, 255, 255, 0.08), transparent 20%),
+          linear-gradient(180deg, rgba(17, 24, 39, 0.98), rgba(10, 14, 18, 0.98));
       }
 
       .hero-placeholder-card {
         width: min(380px, 100%);
         padding: 28px;
-        border-radius: 28px;
-        background: rgba(255, 252, 246, 0.76);
-        border: 1px solid rgba(255, 255, 255, 0.78);
-        box-shadow: 0 24px 60px rgba(28, 40, 53, 0.12);
+        border-radius: var(--radius-lg);
+        background: var(--surface);
+        border: 1px solid var(--line);
+        box-shadow: var(--shadow-panel);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -439,9 +562,7 @@ STATUS_TEMPLATE = """
       }
 
       [data-theme="dark"] .hero-placeholder-card {
-        background: rgba(10, 17, 24, 0.78);
-        border-color: rgba(255, 255, 255, 0.08);
-        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+        background: var(--surface);
       }
 
       .hero-placeholder-card img {
@@ -450,7 +571,7 @@ STATUS_TEMPLATE = """
       }
 
       .hero-placeholder-label {
-        font-family: Georgia, "Times New Roman", serif;
+        font-family: var(--font-display);
         font-size: clamp(2.2rem, 4vw, 3.4rem);
         line-height: 0.96;
       }
@@ -471,11 +592,11 @@ STATUS_TEMPLATE = """
       .hero-copy-inner {
         padding: clamp(18px, 2.1vw, 26px) clamp(22px, 2.6vw, 30px);
         margin: 0;
-        border-radius: 30px;
-        background: rgba(255, 250, 242, 0.42);
-        border: 1px solid rgba(255, 255, 255, 0.34);
+        border-radius: var(--radius-xl);
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid var(--line);
         backdrop-filter: blur(18px);
-        box-shadow: 0 24px 48px rgba(23, 32, 43, 0.12);
+        box-shadow: var(--shadow-panel);
         display: grid;
         grid-template-columns: minmax(0, 1.42fr) minmax(560px, 0.88fr);
         gap: clamp(24px, 3vw, 52px);
@@ -483,9 +604,7 @@ STATUS_TEMPLATE = """
       }
 
       [data-theme="dark"] .hero-copy-inner {
-        background: rgba(8, 13, 20, 0.46);
-        border-color: rgba(255, 255, 255, 0.08);
-        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+        background: rgba(17, 24, 39, 0.78);
       }
 
       .hero-copy-lede {
@@ -506,7 +625,7 @@ STATUS_TEMPLATE = """
       }
 
       .hero-title .hero-title-accent {
-        color: var(--secondary);
+        color: var(--primary);
       }
 
       .hero-description {
@@ -524,9 +643,9 @@ STATUS_TEMPLATE = """
         margin: 0 0 20px;
         padding: 0.65rem 0.9rem;
         border-radius: 999px;
-        border: 1px solid rgba(199, 111, 53, 0.25);
-        background: rgba(199, 111, 53, 0.12);
-        color: var(--secondary);
+        border: 1px solid rgba(8, 145, 178, 0.2);
+        background: rgba(34, 211, 238, 0.1);
+        color: var(--primary);
         font-size: 0.92rem;
         font-weight: 700;
         letter-spacing: 0.02em;
@@ -556,76 +675,65 @@ STATUS_TEMPLATE = """
         gap: 10px;
         border-radius: 999px;
         border: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.46);
+        background: var(--surface-soft);
         padding: 0.7rem 1rem;
-        font-size: 0.82rem;
-        font-weight: 800;
+        font-size: 0.78rem;
+        font-weight: 700;
         letter-spacing: 0.08em;
         text-transform: uppercase;
       }
 
       .hero-stat-strong {
-        border-color: rgba(31, 95, 127, 0.18);
-        background: rgba(31, 95, 127, 0.08);
-      }
-
-      [data-theme="dark"] .hero-stat,
-      [data-theme="dark"] .endpoint-tag,
-      [data-theme="dark"] .reference-status {
-        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(8, 145, 178, 0.2);
+        background: rgba(34, 211, 238, 0.1);
       }
 
       .reference-status.status-success {
-        border-color: rgba(47, 140, 125, 0.2);
-        background: rgba(47, 140, 125, 0.12);
-        color: #1e6b60;
+        border-color: rgba(22, 163, 74, 0.2);
+        background: rgba(22, 163, 74, 0.12);
+        color: #166534;
       }
 
       .reference-status.status-warning {
-        border-color: rgba(199, 111, 53, 0.18);
-        background: rgba(199, 111, 53, 0.12);
-        color: #9f5324;
+        border-color: rgba(217, 119, 6, 0.18);
+        background: rgba(217, 119, 6, 0.12);
+        color: #92400e;
       }
 
       .reference-status.status-error {
-        border-color: rgba(173, 63, 63, 0.18);
-        background: rgba(173, 63, 63, 0.12);
-        color: #8c3131;
+        border-color: rgba(220, 38, 38, 0.18);
+        background: rgba(220, 38, 38, 0.12);
+        color: #991b1b;
       }
 
       .reference-status.status-neutral {
-        border-color: rgba(94, 108, 128, 0.18);
-        background: rgba(94, 108, 128, 0.12);
-        color: #4d5a69;
-      }
-
-      [data-theme="dark"] .hero-stat-strong {
-        border-color: rgba(75, 167, 212, 0.22);
-        background: rgba(75, 167, 212, 0.14);
+        border-color: rgba(100, 116, 139, 0.18);
+        background: rgba(100, 116, 139, 0.12);
+        color: #475569;
       }
 
       [data-theme="dark"] .reference-status.status-success {
-        border-color: rgba(99, 199, 183, 0.26);
-        background: rgba(99, 199, 183, 0.16);
-        color: #94ece0;
+        border-color: rgba(34, 197, 94, 0.24);
+        background: rgba(5, 46, 26, 0.88);
+        color: #86efac;
       }
 
       [data-theme="dark"] .reference-status.status-warning {
-        border-color: rgba(240, 163, 94, 0.24);
-        background: rgba(240, 163, 94, 0.16);
-        color: #ffd0a1;
+        border-color: rgba(245, 158, 11, 0.24);
+        background: rgba(58, 42, 5, 0.88);
+        color: #fcd34d;
       }
 
       [data-theme="dark"] .reference-status.status-error {
-        border-color: rgba(255, 107, 107, 0.24);
-        background: rgba(255, 107, 107, 0.16);
-        color: #ffb1b1;
+        border-color: rgba(239, 68, 68, 0.24);
+        background: rgba(59, 10, 10, 0.88);
+        color: #fca5a5;
       }
 
       [data-theme="dark"] .reference-status.status-neutral {
-        border-color: rgba(163, 178, 194, 0.22);
-        background: rgba(163, 178, 194, 0.16);
-        color: #d5dee7;
+        border-color: rgba(139, 149, 167, 0.22);
+        background: rgba(36, 48, 64, 0.92);
+        color: #cbd5e1;
       }
 
       .hero-actions {
@@ -661,18 +769,14 @@ STATUS_TEMPLATE = """
         height: 100%;
         border-radius: var(--radius-md);
         border: 1px solid var(--line);
-        background: var(--surface);
+        background: var(--surface-soft);
         box-shadow: var(--shadow);
         padding: 1.2rem 1.25rem;
       }
 
-      [data-theme="dark"] .status-card {
-        background: var(--surface-soft);
-      }
-
       .status-card-value {
         margin-top: 0.55rem;
-        font-family: Georgia, "Times New Roman", serif;
+        font-family: var(--font-display);
         font-size: 2rem;
         letter-spacing: -0.04em;
       }
@@ -775,9 +879,11 @@ STATUS_TEMPLATE = """
         min-width: 0;
         border-collapse: separate;
         border-spacing: 0;
-        table-layout: fixed;
+        table-layout: auto;
         border: 1px solid var(--line);
         background: var(--surface-solid);
+        border-radius: var(--radius-md);
+        overflow: hidden;
       }
 
       .reference-table th {
@@ -793,9 +899,6 @@ STATUS_TEMPLATE = """
       }
 
       .reference-table thead th {
-        position: sticky;
-        top: calc(var(--topbar-height) - 1px);
-        z-index: 8;
         background: var(--surface-solid);
         box-shadow: inset 0 -1px 0 var(--line);
       }
@@ -806,32 +909,32 @@ STATUS_TEMPLATE = """
 
       .reference-table th:nth-child(1),
       .reference-table td:nth-child(1) {
-        width: 112px;
+        width: 96px;
       }
 
       .reference-table th:nth-child(2),
       .reference-table td:nth-child(2) {
-        width: 24%;
+        width: 26%;
       }
 
       .reference-table th:nth-child(3),
       .reference-table td:nth-child(3) {
-        width: 34%;
+        width: 36%;
       }
 
       .reference-table th:nth-child(4),
       .reference-table td:nth-child(4) {
-        width: 14%;
+        width: 132px;
       }
 
       .reference-table th:nth-child(5),
       .reference-table td:nth-child(5) {
-        width: 100px;
+        width: 144px;
       }
 
       .reference-table th:nth-child(6),
       .reference-table td:nth-child(6) {
-        width: 144px;
+        width: 120px;
       }
 
       .reference-table td {
@@ -868,7 +971,7 @@ STATUS_TEMPLATE = """
       }
 
       .endpoint-path {
-        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-family: var(--font-mono);
         font-size: 0.92rem;
         line-height: 1.6;
         font-weight: 700;
@@ -879,7 +982,7 @@ STATUS_TEMPLATE = """
         margin-top: 6px;
         font-size: 0.8rem;
         color: var(--muted);
-        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-family: var(--font-mono);
         overflow-wrap: anywhere;
       }
 
@@ -899,47 +1002,47 @@ STATUS_TEMPLATE = """
       }
 
       .endpoint-category.tag {
-        background: rgba(93, 105, 118, 0.14);
-        border-color: rgba(93, 105, 118, 0.2);
-        color: #42505f;
+        background: rgba(100, 116, 139, 0.12);
+        border-color: rgba(100, 116, 139, 0.18);
+        color: #334155;
       }
 
       [data-theme="dark"] .endpoint-category.tag {
-        background: rgba(255, 255, 255, 0.08);
-        border-color: rgba(255, 255, 255, 0.12);
-        color: #d5dee7;
+        background: rgba(36, 48, 64, 0.92);
+        border-color: rgba(139, 149, 167, 0.18);
+        color: #cbd5e1;
       }
 
       .endpoint-method.method-get {
-        background: rgba(47, 140, 125, 0.12);
-        border-color: rgba(47, 140, 125, 0.2);
-        color: #1e6b60;
+        background: rgba(22, 163, 74, 0.12);
+        border-color: rgba(22, 163, 74, 0.18);
+        color: #166534;
       }
 
       .endpoint-method.method-post {
-        background: rgba(31, 95, 127, 0.12);
-        border-color: rgba(31, 95, 127, 0.18);
-        color: #1a5370;
+        background: rgba(8, 145, 178, 0.12);
+        border-color: rgba(8, 145, 178, 0.18);
+        color: #0f766e;
       }
 
       .endpoint-method.method-put,
       .endpoint-method.method-patch {
-        background: rgba(199, 111, 53, 0.12);
-        border-color: rgba(199, 111, 53, 0.18);
-        color: #9f5324;
+        background: rgba(217, 119, 6, 0.12);
+        border-color: rgba(217, 119, 6, 0.18);
+        color: #92400e;
       }
 
       .endpoint-method.method-delete {
-        background: rgba(173, 63, 63, 0.12);
-        border-color: rgba(173, 63, 63, 0.18);
-        color: #8c3131;
+        background: rgba(220, 38, 38, 0.12);
+        border-color: rgba(220, 38, 38, 0.18);
+        color: #991b1b;
       }
 
       .endpoint-method.method-options,
       .endpoint-method.method-head {
-        background: rgba(94, 108, 128, 0.12);
-        border-color: rgba(94, 108, 128, 0.18);
-        color: #4d5a69;
+        background: rgba(100, 116, 139, 0.12);
+        border-color: rgba(100, 116, 139, 0.18);
+        color: #475569;
       }
 
       .endpoint-status.tag {
@@ -947,51 +1050,51 @@ STATUS_TEMPLATE = """
       }
 
       .endpoint-status.status-success {
-        background: rgba(47, 140, 125, 0.12);
-        border-color: rgba(47, 140, 125, 0.2);
-        color: #1e6b60;
+        background: rgba(22, 163, 74, 0.12);
+        border-color: rgba(22, 163, 74, 0.18);
+        color: #166534;
       }
 
       .endpoint-status.status-error {
-        background: rgba(173, 63, 63, 0.12);
-        border-color: rgba(173, 63, 63, 0.18);
-        color: #8c3131;
+        background: rgba(220, 38, 38, 0.12);
+        border-color: rgba(220, 38, 38, 0.18);
+        color: #991b1b;
       }
 
       .endpoint-status.status-neutral {
-        background: rgba(94, 108, 128, 0.12);
-        border-color: rgba(94, 108, 128, 0.18);
-        color: #4d5a69;
+        background: rgba(100, 116, 139, 0.12);
+        border-color: rgba(100, 116, 139, 0.18);
+        color: #475569;
       }
 
       .endpoint-status.status-warning {
-        background: rgba(199, 111, 53, 0.12);
-        border-color: rgba(199, 111, 53, 0.18);
-        color: #9f5324;
+        background: rgba(217, 119, 6, 0.12);
+        border-color: rgba(217, 119, 6, 0.18);
+        color: #92400e;
       }
 
       [data-theme="dark"] .endpoint-status.status-success {
-        background: rgba(99, 199, 183, 0.16);
-        border-color: rgba(99, 199, 183, 0.26);
-        color: #94ece0;
+        background: rgba(5, 46, 26, 0.88);
+        border-color: rgba(34, 197, 94, 0.24);
+        color: #86efac;
       }
 
       [data-theme="dark"] .endpoint-status.status-error {
-        background: rgba(255, 107, 107, 0.16);
-        border-color: rgba(255, 107, 107, 0.24);
-        color: #ffb1b1;
+        background: rgba(59, 10, 10, 0.88);
+        border-color: rgba(239, 68, 68, 0.24);
+        color: #fca5a5;
       }
 
       [data-theme="dark"] .endpoint-status.status-neutral {
-        background: rgba(163, 178, 194, 0.16);
-        border-color: rgba(163, 178, 194, 0.22);
-        color: #d5dee7;
+        background: rgba(36, 48, 64, 0.92);
+        border-color: rgba(139, 149, 167, 0.22);
+        color: #cbd5e1;
       }
 
       [data-theme="dark"] .endpoint-status.status-warning {
-        background: rgba(240, 163, 94, 0.16);
-        border-color: rgba(240, 163, 94, 0.24);
-        color: #ffd0a1;
+        background: rgba(58, 42, 5, 0.88);
+        border-color: rgba(245, 158, 11, 0.24);
+        color: #fcd34d;
       }
 
       .reference-pagination {
@@ -1047,8 +1150,14 @@ STATUS_TEMPLATE = """
         white-space: pre-wrap;
         overflow-wrap: anywhere;
         word-break: break-word;
-        background: rgba(23, 32, 43, 0.04);
+        background: var(--surface-soft);
         color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        padding: 1rem;
+        font-family: var(--font-mono);
+        font-size: 0.86rem;
+        line-height: 1.6;
       }
 
       .payload-popover .modal-background {
@@ -1058,7 +1167,7 @@ STATUS_TEMPLATE = """
 
       .payload-popover .modal-card {
         width: min(760px, calc(100vw - 32px));
-        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+        box-shadow: var(--shadow-panel);
         overflow: hidden;
       }
 
@@ -1081,7 +1190,7 @@ STATUS_TEMPLATE = """
 
       .payload-popover .modal-card-title {
         color: var(--text);
-        font-family: Georgia, "Times New Roman", serif;
+        font-family: var(--font-display);
       }
 
       .payload-popover .modal-card-head .delete {
@@ -1119,7 +1228,7 @@ STATUS_TEMPLATE = """
         font-weight: 800;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: var(--secondary);
+        color: var(--primary);
       }
 
       .sample-section-meta {
@@ -1128,19 +1237,19 @@ STATUS_TEMPLATE = """
       }
 
       [data-theme="dark"] .sample-block {
-        background: rgba(255, 255, 255, 0.05);
+        background: var(--surface-soft);
       }
 
       .empty-state {
-        border-radius: var(--radius-lg);
-        border: 1px dashed var(--line-strong);
-        background: rgba(255, 255, 255, 0.44);
+        border-radius: var(--radius-md);
+        border: 1px solid var(--line);
+        background: var(--surface-soft);
         padding: 28px;
         color: var(--muted);
       }
 
       [data-theme="dark"] .empty-state {
-        background: rgba(255, 255, 255, 0.04);
+        background: var(--surface-soft);
       }
 
       .footer-shell {
@@ -1184,7 +1293,7 @@ STATUS_TEMPLATE = """
         }
 
         .reference-table {
-          min-width: 960px;
+          min-width: 820px;
         }
 
         .reference-pagination {
@@ -1208,16 +1317,22 @@ STATUS_TEMPLATE = """
           padding: 10px 0;
         }
 
+        .brand-mark {
+          width: 56px;
+          height: 56px;
+        }
+
         .topbar .navbar-menu {
-          background: rgba(246, 240, 228, 0.92);
-          border-radius: 22px;
-          box-shadow: 0 20px 45px rgba(28, 40, 53, 0.14);
+          background: var(--surface);
+          border-radius: var(--radius-lg);
+          border: 1px solid var(--line);
+          box-shadow: var(--shadow-panel);
           padding: 0.65rem;
           margin-top: 0.5rem;
         }
 
         [data-theme="dark"] .topbar .navbar-menu {
-          background: rgba(9, 14, 20, 0.94);
+          background: var(--surface);
         }
 
         .topbar .buttons {
@@ -1225,8 +1340,20 @@ STATUS_TEMPLATE = """
           justify-content: stretch;
         }
 
+        .topbar-toolbar {
+          width: 100%;
+          display: grid;
+          gap: 8px;
+        }
+
         .topbar .buttons .button {
           width: 100%;
+        }
+
+        .topbar-toggle {
+          width: 48px;
+          min-width: 48px;
+          justify-self: start;
         }
 
         .hero-shell {
@@ -1317,15 +1444,33 @@ STATUS_TEMPLATE = """
             <div class="navbar-menu" id="homepage-nav">
               <div class="navbar-end topbar-actions">
                 <div class="navbar-item">
-                  <div class="buttons">
-                    <button class="button is-light nav-link theme-toggle" id="theme-toggle" type="button" aria-pressed="false">
-                      Dark mode
+                  <div class="topbar-toolbar">
+                    <button
+                      class="button is-light nav-link theme-toggle topbar-toggle"
+                      id="theme-toggle"
+                      type="button"
+                      aria-pressed="false"
+                      aria-label="Switch to light mode"
+                      title="Switch to light mode"
+                    >
+                      <span class="sr-only">Toggle color theme</span>
+                      <svg class="theme-icon theme-icon-moon" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                        <path d="M18 15.2A7.2 7.2 0 0 1 8.8 6a7.8 7.8 0 1 0 9.2 9.2Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                      <svg class="theme-icon theme-icon-sun" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8" />
+                        <path d="M12 2.5v2.2M12 19.3v2.2M21.5 12h-2.2M4.7 12H2.5M18.7 5.3l-1.5 1.5M6.8 17.2l-1.5 1.5M18.7 18.7l-1.5-1.5M6.8 6.8 5.3 5.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                      </svg>
                     </button>
-                    <a class="button is-light nav-link" href="#status">Status</a>
-                    <a class="button is-light nav-link" href="#reference">Routes</a>
-                    <a class="button is-light nav-link" href="/api/reference.json">Reference JSON</a>
-                    <a class="button is-light nav-link" href="/openapi.json">OpenAPI JSON</a>
-                    <a class="button is-link hero-link" href="/docs">API docs</a>
+                    <div class="buttons">
+                      <a class="button is-light nav-link" href="#status">Status</a>
+                      <a class="button is-light nav-link" href="#reference">Routes</a>
+                    </div>
+                    <div class="buttons">
+                      <a class="button is-light nav-link topbar-utility" href="/api/reference.json">Reference</a>
+                      <a class="button is-light nav-link topbar-utility" href="/openapi.json">OpenAPI</a>
+                      <a class="button is-link hero-link" href="/docs">Docs</a>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1341,7 +1486,7 @@ STATUS_TEMPLATE = """
               <div class="eyebrow">API status</div>
               <h1 class="section-title">Artificer API status.</h1>
               <p class="section-description">
-                Dependency health, public contract links, and route publication state in one place.
+                Health, reference links, and published routes.
               </p>
             </div>
 
@@ -1356,7 +1501,7 @@ STATUS_TEMPLATE = """
               <article class="status-card">
                 <div class="eyebrow">Health</div>
                 <div class="status-card-value" data-health-status>__INITIAL_HEALTH_STATUS__</div>
-                <p class="status-card-copy">Overall health is derived from per-dependency checks, not a hard-coded banner.</p>
+                <p class="status-card-copy">Derived from dependency checks.</p>
               </article>
             </div>
 
@@ -1364,7 +1509,7 @@ STATUS_TEMPLATE = """
               <article class="status-card">
                 <div class="eyebrow">Public routes</div>
                 <div class="status-card-value"><span data-endpoint-count>__ENDPOINT_COUNT__</span></div>
-                <p class="status-card-copy">Routes currently exposed by the public reference policy.</p>
+                <p class="status-card-copy">Routes in the public reference.</p>
               </article>
             </div>
 
@@ -1372,7 +1517,7 @@ STATUS_TEMPLATE = """
               <article class="status-card">
                 <div class="eyebrow">Live runtime</div>
                 <div class="status-card-value" data-live-route-count>__INITIAL_LIVE_ROUTE_COUNT__</div>
-                <p class="status-card-copy">Published routes currently served by an active live deployment.</p>
+                <p class="status-card-copy">Routes on active deployments.</p>
               </article>
             </div>
 
@@ -1380,7 +1525,7 @@ STATUS_TEMPLATE = """
               <article class="status-card">
                 <div class="eyebrow">Legacy mock</div>
                 <div class="status-card-value" data-legacy-route-count>__INITIAL_LEGACY_ROUTE_COUNT__</div>
-                <p class="status-card-copy">Published routes still served by the schema-driven legacy mock path.</p>
+                <p class="status-card-copy">Routes still using the legacy mock path.</p>
               </article>
             </div>
           </div>
@@ -1388,9 +1533,9 @@ STATUS_TEMPLATE = """
           <div class="reference-header status-dependency-header">
             <div>
               <div class="eyebrow">Dependency health</div>
-              <h2 class="section-title section-title-small">Checked dependency by dependency.</h2>
+              <h2 class="section-title section-title-small">Dependency checks.</h2>
               <p class="section-description">
-                Each dependency is evaluated independently so unhealthy components surface directly instead of hiding behind a static healthy status.
+                Each dependency reports its own status and latency.
               </p>
             </div>
           </div>
@@ -1402,15 +1547,15 @@ STATUS_TEMPLATE = """
           <div class="reference-header">
             <div>
               <div class="eyebrow">Quick reference</div>
-              <h2 class="section-title">Published routes right now.</h2>
+              <h2 class="section-title">Published routes.</h2>
               <p class="section-description">
-                This table reflects the currently published routes, including whether each route is served by the live runtime or the legacy mock path, and refreshes every __REFRESH_SECONDS__ seconds.
+                Current public routes. Refreshes every __REFRESH_SECONDS__ seconds.
               </p>
             </div>
 
             <div class="section-actions">
-              <a class="nav-link" href="/api/reference.json">Reference JSON</a>
-              <a class="nav-link" href="/openapi.json">OpenAPI JSON</a>
+              <a class="nav-link" href="/api/reference.json">Reference</a>
+              <a class="nav-link" href="/openapi.json">OpenAPI</a>
             </div>
           </div>
 
@@ -1605,9 +1750,9 @@ STATUS_TEMPLATE = """
 
         if (themeToggle) {
           const darkActive = nextTheme === "dark";
-          themeToggle.textContent = darkActive ? "Light mode" : "Dark mode";
           themeToggle.setAttribute("aria-pressed", String(darkActive));
           themeToggle.setAttribute("aria-label", darkActive ? "Switch to light mode" : "Switch to dark mode");
+          themeToggle.setAttribute("title", darkActive ? "Switch to light mode" : "Switch to dark mode");
         }
       }
 
@@ -2036,7 +2181,7 @@ STATUS_TEMPLATE = """
       }
 
       if (themeToggle) {
-        applyTheme(document.documentElement.dataset.theme || "light");
+        applyTheme(document.documentElement.dataset.theme || "dark");
         themeToggle.addEventListener("click", toggleTheme);
       }
 

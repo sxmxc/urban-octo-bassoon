@@ -40,28 +40,16 @@ async function handleSubmit(): Promise<void> {
 
 <template>
   <v-row class="fill-height align-center" justify="center">
-    <v-col cols="12" md="9" lg="7" xl="6">
-      <div class="d-flex flex-column ga-5">
-        <v-card class="workspace-card auth-intro-card">
-          <v-card-text class="pa-8 pa-sm-9">
-            <div class="text-overline text-secondary">Admin access</div>
-            <div class="text-h3 font-weight-bold mt-2">Sign in to Artificer Studio</div>
-            <div class="text-body-1 text-medium-emphasis mt-4 auth-support-copy">
-              Manage routes, edit request and response schemas, and check the live output before you hand the route to someone else.
-            </div>
-          </v-card-text>
-        </v-card>
+    <v-col cols="12" md="8" lg="6" xl="5">
+      <div class="auth-login-shell">
+        <div class="auth-login-brand">
+          <img alt="Artificer" class="auth-brand-logo" src="/logo.svg">
+        </div>
 
         <v-card class="workspace-card">
-          <v-card-item>
-            <template #prepend>
-              <v-avatar color="primary" variant="tonal">
-                <v-icon icon="mdi-lock-outline" />
-              </v-avatar>
-            </template>
-
-            <v-card-title>Sign in</v-card-title>
-            <v-card-subtitle>Use your admin account. New installs may show a temporary bootstrap password in the API logs.</v-card-subtitle>
+          <v-card-item class="auth-card-header">
+            <v-card-title class="auth-card-title">Sign in</v-card-title>
+            <v-card-subtitle class="auth-card-subtitle">Use your admin account to continue.</v-card-subtitle>
           </v-card-item>
 
           <v-divider />
@@ -110,7 +98,7 @@ async function handleSubmit(): Promise<void> {
               />
 
               <div class="text-caption text-medium-emphasis">
-                Leave this off on a shared device.
+                Leave this off on shared devices.
               </div>
 
               <v-btn
@@ -124,6 +112,10 @@ async function handleSubmit(): Promise<void> {
                 Sign in
               </v-btn>
             </v-form>
+
+            <div class="text-caption text-medium-emphasis">
+              Need the first bootstrap password? Check the API startup logs.
+            </div>
           </v-card-text>
         </v-card>
       </div>

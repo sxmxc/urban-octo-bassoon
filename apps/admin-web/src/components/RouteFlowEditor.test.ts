@@ -645,7 +645,11 @@ describe("RouteFlowEditor", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Edit Transform" }));
     await flushPromises();
 
-    expect(screen.getAllByText("Connected paths").length).toBeGreaterThan(0);
+    const connectedPathsToggle = screen.getByRole("button", { name: "Connected paths" });
+    expect(connectedPathsToggle).toBeInTheDocument();
+    await fireEvent.click(connectedPathsToggle);
+    await flushPromises();
+
     expect(screen.getByText("Reconnect or remove outgoing paths directly from this inspector.")).toBeInTheDocument();
 
     await fireEvent.click(screen.getByRole("button", { name: "Remove path" }));
@@ -656,6 +660,25 @@ describe("RouteFlowEditor", () => {
     const lastUpdate = updates.at(-1)?.[0] as RouteFlowDefinition | undefined;
     expect(lastUpdate?.edges).toHaveLength(1);
     expect(lastUpdate?.edges[0]).toEqual(expect.objectContaining({ source: "trigger", target: "transform-1" }));
+  });
+
+  it("keeps editable controls visible first and moves guidance into a collapsible section", async () => {
+    renderEditor({
+      modelValue: branchFlowDefinition,
+    });
+
+    await fireEvent.click(screen.getAllByRole("button", { name: "Open full editor" })[0]);
+    await fireEvent.click(screen.getByTestId("canvas-node-if-1"));
+    await fireEvent.click(screen.getByRole("button", { name: "Edit If" }));
+    await flushPromises();
+
+    expect(screen.getByLabelText("Left value")).toBeInTheDocument();
+    expect(screen.queryByText("If checks route data and continues on True or False.")).not.toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Flow guidance" }));
+    await flushPromises();
+
+    expect(screen.getByText("If checks route data and continues on True or False.")).toBeInTheDocument();
   });
 
   it("reconnects an outgoing branch path from the shared connected-path cards", async () => {

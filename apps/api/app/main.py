@@ -13,9 +13,9 @@ app = FastAPI(title="Artificer API", version=settings.app_version)
 PUBLIC_CSP = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline'; "
-    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
     "img-src 'self' data: https:; "
-    "font-src 'self' data: https://cdn.jsdelivr.net; "
+    "font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com; "
     "connect-src 'self'; "
     "base-uri 'self'; "
     "form-action 'self'; "
