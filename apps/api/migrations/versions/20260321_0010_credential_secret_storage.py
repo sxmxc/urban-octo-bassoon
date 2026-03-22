@@ -10,12 +10,13 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import os
 from typing import Any
 
 from alembic import op
 from cryptography.fernet import Fernet, InvalidToken
 import sqlalchemy as sa
+
+from app.config import Settings
 
 
 revision = "20260321_0010"
@@ -32,10 +33,11 @@ def _derive_fernet_key(seed: str) -> bytes:
 
 
 def _build_fernet() -> Fernet:
-    configured_key = str(os.environ.get("CREDENTIAL_ENCRYPTION_KEY") or "").strip()
+    settings = Settings()
+    configured_key = str(settings.credential_encryption_key or "").strip()
     if not configured_key:
         raise RuntimeError(
-            "CREDENTIAL_ENCRYPTION_KEY must be set before running the credential secret storage migration."
+            "CREDENTIAL_ENCRYPTION_KEY must be configured before running the credential secret storage migration."
         )
     try:
         return Fernet(configured_key.encode("utf-8"))

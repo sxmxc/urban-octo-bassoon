@@ -85,7 +85,7 @@ Already shipped:
 - editor/superuser credential reads now return redacted secret-bearing config fields plus placeholder metadata so stored secrets can survive edit flows without ever being revealed again, including Postgres DSN aliases and case-insensitive HTTP header-name normalization
 - runtime traces now apply secret-aware redaction before persistence, and outbound HTTP nodes reject absolute/scheme-relative path overrides plus protected-header collisions
 - the old plaintext `Connection.config` blob is gone; non-secret connector settings now persist separately from encrypted secret material, `/api/admin/credentials` is the primary admin API, and `/api/admin/connections` remains as a compatibility alias
-- credential encryption now requires `CREDENTIAL_ENCRYPTION_KEY` at API startup and during the storage migration; local Compose/test bootstrap stays usable because those flows inject explicit dev/test keys
+- credential encryption now requires `CREDENTIAL_ENCRYPTION_KEY` at API startup and during the storage migration, and both paths resolve it through the same `.env`-aware settings loader; local Compose/test bootstrap stays usable because those flows inject explicit dev/test keys
 - explicit disable-live workflow in the admin API and `Deploy` tab, which deactivates the active deployment without deleting route or implementation history
 - runtime-aware route deletion for both direct admin deletes and confirmed `replace_all` imports, including explicit cleanup of runtime history before the route row is removed
 

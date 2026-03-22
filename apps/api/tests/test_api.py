@@ -4191,6 +4191,20 @@ def test_system_health_route_migration_fails_on_non_seeded_rows(monkeypatch):
     assert bind.executed == []
 
 
+def test_credential_secret_storage_migration_reads_encryption_key_from_settings(monkeypatch):
+    migration_module = importlib.import_module("migrations.versions.20260321_0010_credential_secret_storage")
+    monkeypatch.delenv("CREDENTIAL_ENCRYPTION_KEY", raising=False)
+
+    class FakeSettings:
+        credential_encryption_key = "settings-backed-migration-key"
+
+    monkeypatch.setattr(migration_module, "Settings", lambda: FakeSettings())
+
+    fernet = migration_module._build_fernet()
+    token = fernet.encrypt(b"artificer")
+    assert fernet.decrypt(token) == b"artificer"
+
+
 def test_public_route_matching_treats_saved_paths_as_literals(empty_db):
     client = TestClient(app)
     headers = _login_headers(client)

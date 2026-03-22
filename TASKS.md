@@ -20,6 +20,7 @@ Read `docs/roadmap.md` alongside this file if you are picking up the next implem
 - [ ] (none)
 
 ## Done
+- [x] Load the credential-storage migration encryption key through `Settings` so `.env`-backed startup and Alembic upgrade paths stay aligned
 - [x] Restore trusted-proxy-aware admin login throttling via configured proxy CIDRs and preserve redacted HTTP headers case-insensitively during credential edits
 - [x] Preserve redacted Postgres DSN secrets across legacy alias normalization and reject all absolute-URI HTTP node paths during implementation validation
 - [x] Finish the 2026-03-21 security hardening pass: add secret-aware execution-trace redaction, block absolute/scheme-relative HTTP-node paths plus protected-header overrides, and keep the rest of the public/admin runtime hardening fail-closed
