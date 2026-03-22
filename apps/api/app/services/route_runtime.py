@@ -949,12 +949,6 @@ def _split_http_connection_config(
             if value in {None, ""}:
                 continue
             merged_headers[header_name] = str(value)
-    elif isinstance(existing_headers, dict):
-        merged_headers = {
-            str(key): str(value)
-            for key, value in existing_headers.items()
-            if value not in {None, ""}
-        }
 
     secret_material = {"headers": merged_headers} if merged_headers else {}
     return settings, secret_material

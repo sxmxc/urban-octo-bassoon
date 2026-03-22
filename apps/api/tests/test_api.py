@@ -1311,6 +1311,54 @@ def test_runtime_http_connection_updates_preserve_redacted_headers_case_insensit
         assert "shared-secret" not in http_connection.secret_material_encrypted
 
 
+def test_runtime_http_connection_updates_clear_headers_when_omitted(empty_db):
+    client = TestClient(app)
+    headers = _login_headers(client)
+
+    create_response = client.post(
+        "/api/admin/connections",
+        json={
+            "project": "default",
+            "environment": "production",
+            "name": "Clearable upstream",
+            "connector_type": "http",
+            "description": None,
+            "config": {
+                "base_url": "https://api.example.com",
+                "headers": {"X-API-Key": "shared-secret"},
+            },
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert create_response.status_code == 201
+
+    update_response = client.put(
+        "/api/admin/connections/1",
+        json={
+            "project": "default",
+            "environment": "production",
+            "name": "Clearable upstream",
+            "connector_type": "http",
+            "description": "Updated after clearing shared headers",
+            "config": {
+                "base_url": "https://api-v2.example.com",
+            },
+            "is_active": True,
+        },
+        headers=headers,
+    )
+    assert update_response.status_code == 200
+    assert "headers" not in update_response.json()["config"]
+
+    with Session(engine) as session:
+        http_connection = session.get(route_runtime_module.Connection, 1)
+        assert http_connection is not None
+        assert http_connection.settings["base_url"] == "https://api-v2.example.com"
+        assert "headers" not in route_runtime_module._connection_runtime_config(http_connection)
+        assert http_connection.secret_material_encrypted is None
+
+
 def test_runtime_postgres_updates_remove_dsn_when_switching_to_field_config(empty_db):
     client = TestClient(app)
     headers = _login_headers(client)
